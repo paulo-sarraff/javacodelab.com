@@ -6,6 +6,7 @@ import AboutPage from './components/AboutPage'
 import ContactPage from './components/ContactPage'
 import TermsPage from './components/TermsPage'
 import PrivacyPage from './components/PrivacyPage'
+import PremiumPage from './components/PremiumPage'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="/contato" element={<ContactPage />} />
           <Route path="/termos-uso" element={<TermsPage />} />
           <Route path="/politica-privacidade" element={<PrivacyPage />} />
+          <Route path="/premium" element={<PremiumPage />} />
         </Routes>
       </div>
     </Router>
