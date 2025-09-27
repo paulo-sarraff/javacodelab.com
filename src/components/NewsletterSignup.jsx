@@ -2,11 +2,15 @@ import { useState } from 'react'
 import { Mail, CheckCircle, ArrowRight, Gift, Users, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { subscribeToNewsletter } from '../utils/newsletter-integration'
 
 const NewsletterSignup = () => {
   const [email, setEmail] = useState('')
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [message, setMessage] = useState('')
+  const [isSuccess, setIsSuccess] = useState(false)
 
   const benefits = [
     {
@@ -28,16 +32,19 @@ const NewsletterSignup = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!email) return
+    setIsSubmitting(true)
+    setMessage('')
+    setIsSuccess(false)
 
-    setIsLoading(true)
+    const result = await subscribeToNewsletter(email)
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubscribed(true)
-      setIsLoading(false)
-      setEmail('')
-    }, 1500)
+    setIsSubmitting(false)
+    setMessage(result.message)
+    setIsSuccess(result.success)
+
+    if (result.success) {
+      setEmail('') // Limpar o campo se sucesso
+    }
   }
 
   if (isSubscribed) {
