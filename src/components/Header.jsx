@@ -1,5 +1,7 @@
+'use client'
+
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Menu, X, Search, Code2, ChevronDown, BookOpen, Users, Briefcase, ShoppingBag, Mail, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SearchModal from './SearchModal'
@@ -53,7 +55,7 @@ const Header = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-3 group">
+            <Link href="/" className="flex items-center gap-3 group">
 
           <div className="flex-shrink-0">
             <div className="text-[#E8E8E8] font-geist font-bold text-xl">

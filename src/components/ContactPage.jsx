@@ -1,5 +1,7 @@
+'use client'
+
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Mail, Phone, MapPin, Send, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import Header from './Header'
 import Footer from './Footer'
@@ -304,7 +306,7 @@ const ContactPage = () => {
 
                 <div className="text-sm text-[#E8E8E8]/60 font-roboto">
                   * Campos obrigatórios. Ao enviar este formulário, você concorda com nossa{' '}
-                  <Link to="/politica-privacidade" className="text-[#FFD15A] hover:underline transition-colors">
+                  <Link href="/politica-privacidade" className="text-[#FFD15A] hover:underline transition-colors">
                     Política de Privacidade
                   </Link>.
                 </div>
@@ -397,7 +399,7 @@ const ContactPage = () => {
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button asChild className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 rounded-xl">
-                  <Link to="/">
+                  <Link href="/">
                     Explorar Artigos
                   </Link>
                 </Button>

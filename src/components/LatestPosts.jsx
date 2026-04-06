@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Calendar, User, Clock, ArrowRight, TrendingUp } from 'lucide-react'
 import { getLatestArticles } from '../data/articles'
@@ -62,7 +62,7 @@ const LatestPosts = () => {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
           {posts.map((post, index) => (
             <article key={post.id} className="group">
-              <Link to={`/artigo/${post.slug}`} className="block">
+              <Link href={`/artigo/${post.slug}`} className="block">
                 <div className="bg-[#2A2A2B] rounded-xl overflow-hidden border border-white/10 hover:border-[#FFD15A]/50 transition-all duration-300 hover:shadow-lg hover:shadow-[#FFD15A]/10 hover-lift">
                   {/* Image with overlay */}
                   <div className="aspect-video bg-gradient-to-br from-[#02a9f7]/20 to-[#FFD15A]/20 relative overflow-hidden">

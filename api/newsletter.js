@@ -45,7 +45,6 @@ export default async function handler(req, res) {
     // Configuração MailerLite
     const MAILERLITE_API_KEY = process.env.MAILERLITE_API_KEY
     const MAILERLITE_GROUP_ID = process.env.MAILERLITE_GROUP_ID
-    console.log(MAILERLITE_API_KEY)
 
     if (!MAILERLITE_API_KEY) {
       console.error('MAILERLITE_API_KEY não configurada')
