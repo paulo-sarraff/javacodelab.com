@@ -1,5 +1,8 @@
 import ArticlePage from '@/components/ArticlePage'
+import JsonLd from '@/components/JsonLd'
 import { getArticleBySlug, getAllArticles } from '@/data/articles'
+
+const BASE_URL = 'https://javacodelab.com'
 
 export async function generateMetadata({ params }) {
   const { slug } = await params
@@ -12,26 +15,40 @@ export async function generateMetadata({ params }) {
     }
   }
 
+  const ogImageUrl = `${BASE_URL}/api/og?slug=${article.slug}`
+
   return {
     title: article.title,
     description: article.excerpt,
     keywords: article.tags,
-    authors: [{ name: article.author }],
+    authors: [{ name: article.author, url: `${BASE_URL}/sobre` }],
     openGraph: {
       type: 'article',
       title: article.title,
       description: article.excerpt,
+      url: `${BASE_URL}/artigo/${article.slug}`,
+      siteName: 'JavaCodeLab',
       publishedTime: article.sortDate,
-      authors: [article.author],
+      authors: [`${BASE_URL}/sobre`],
       tags: article.tags,
       images: [
         {
-          url: article.featuredImage,
+          url: ogImageUrl,
           width: 1200,
-          height: 600,
+          height: 630,
           alt: article.title,
+          type: 'image/png',
         },
       ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: article.title,
+      description: article.excerpt,
+      images: [ogImageUrl],
+    },
+    alternates: {
+      canonical: `${BASE_URL}/artigo/${article.slug}`,
     },
   }
 }
@@ -41,6 +58,48 @@ export async function generateStaticParams() {
   return articles.map((article) => ({ slug: article.slug }))
 }
 
-export default function Page() {
-  return <ArticlePage />
+export default async function Page({ params }) {
+  const { slug } = await params
+  const article = getArticleBySlug(slug)
+
+  // Schema.org Article — habilita Rich Snippets no Google
+  const articleSchema = article
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: article.title,
+        description: article.excerpt,
+        image: `${BASE_URL}/api/og?slug=${article.slug}`,
+        datePublished: article.sortDate,
+        dateModified: article.sortDate,
+        author: {
+          '@type': 'Person',
+          name: article.author,
+          url: `${BASE_URL}/sobre`,
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'JavaCodeLab',
+          url: BASE_URL,
+          logo: {
+            '@type': 'ImageObject',
+            url: `${BASE_URL}/favicon.ico`,
+          },
+        },
+        mainEntityOfPage: {
+          '@type': 'WebPage',
+          '@id': `${BASE_URL}/artigo/${article.slug}`,
+        },
+        keywords: article.tags.join(', '),
+        articleSection: article.category,
+        inLanguage: 'pt-BR',
+      }
+    : null
+
+  return (
+    <>
+      {articleSchema && <JsonLd data={articleSchema} />}
+      <ArticlePage />
+    </>
+  )
 }

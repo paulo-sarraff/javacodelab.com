@@ -1,7 +1,10 @@
 import './globals.css'
+import JsonLd from '@/components/JsonLd'
+
+const BASE_URL = 'https://javacodelab.com'
 
 export const metadata = {
-  metadataBase: new URL('https://javacodelab.com'),
+  metadataBase: new URL(BASE_URL),
   title: {
     default: 'JavaCodeLab - Desenvolvimento Java e Spring Framework',
     template: '%s | JavaCodeLab',
@@ -20,22 +23,23 @@ export const metadata = {
     'Hibernate',
     'JPA',
   ],
-  authors: [{ name: 'Paulo Sarraff', url: 'https://javacodelab.com/sobre' }],
+  authors: [{ name: 'Paulo Sarraff', url: `${BASE_URL}/sobre` }],
   creator: 'Paulo Sarraff',
   openGraph: {
     type: 'website',
     locale: 'pt_BR',
-    url: 'https://javacodelab.com',
+    url: BASE_URL,
     siteName: 'JavaCodeLab',
     title: 'JavaCodeLab - Desenvolvimento Java e Spring Framework',
     description:
       'Blog especializado em Java, Spring Boot e ecossistema Java. Tutoriais práticos para desenvolvedores.',
     images: [
       {
-        url: '/og-image.png',
+        url: `${BASE_URL}/api/og`,
         width: 1200,
         height: 630,
         alt: 'JavaCodeLab',
+        type: 'image/png',
       },
     ],
   },
@@ -55,11 +59,65 @@ export const metadata = {
       'max-snippet': -1,
     },
   },
+  alternates: {
+    canonical: BASE_URL,
+  },
+}
+
+// Schema.org WebSite — habilita Sitelinks Searchbox no Google
+const websiteSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'JavaCodeLab',
+  url: BASE_URL,
+  description:
+    'Blog especializado em Java, Spring Boot, Quarkus e ecossistema Java para desenvolvedores.',
+  inLanguage: 'pt-BR',
+  author: {
+    '@type': 'Person',
+    name: 'Paulo Sarraff',
+    url: `${BASE_URL}/sobre`,
+  },
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: `${BASE_URL}/?q={search_term_string}`,
+    },
+    'query-input': 'required name=search_term_string',
+  },
+}
+
+// Schema.org Organization — reforça identidade da marca no Google
+const organizationSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'JavaCodeLab',
+  url: BASE_URL,
+  logo: {
+    '@type': 'ImageObject',
+    url: `${BASE_URL}/favicon.ico`,
+  },
+  sameAs: [
+    'https://twitter.com/javacodelab',
+    'https://www.linkedin.com/company/javacodelab',
+    'https://github.com/javacodelab',
+  ],
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'customer support',
+    url: `${BASE_URL}/contato`,
+    availableLanguage: 'Portuguese',
+  },
 }
 
 export default function RootLayout({ children }) {
   return (
     <html lang="pt-BR">
+      <head>
+        <JsonLd data={websiteSchema} />
+        <JsonLd data={organizationSchema} />
+      </head>
       <body>{children}</body>
     </html>
   )
