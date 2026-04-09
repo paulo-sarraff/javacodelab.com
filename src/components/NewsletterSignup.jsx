@@ -5,6 +5,7 @@ import { Mail, CheckCircle, ArrowRight, Gift, Users, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { subscribeToNewsletter } from '../utils/newsletter-integration'
+import { trackEvent, events } from '@/lib/analytics'
 
 const NewsletterSignup = () => {
   const [email, setEmail] = useState('')
@@ -39,13 +40,16 @@ const NewsletterSignup = () => {
     setIsSuccess(false)
 
     const result = await subscribeToNewsletter(email)
-    
+
     setIsSubmitting(false)
     setMessage(result.message)
     setIsSuccess(result.success)
 
     if (result.success) {
-      setEmail('') // Limpar o campo se sucesso
+      trackEvent(events.NEWSLETTER_SIGNUP, { source: 'newsletter_section' })
+      setEmail('')
+    } else {
+      trackEvent(events.NEWSLETTER_ERROR, { source: 'newsletter_section' })
     }
   }
 
