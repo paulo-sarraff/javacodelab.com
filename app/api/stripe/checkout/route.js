@@ -2,6 +2,9 @@ import { auth, currentUser } from '@clerk/nextjs/server'
 import { stripe, STRIPE_PLANS } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 
+// Impede análise estática durante next build — esta rota só existe em runtime
+export const dynamic = 'force-dynamic'
+
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://javacodelab.com'
 
 export async function POST(request) {

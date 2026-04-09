@@ -1,10 +1,36 @@
 import Stripe from 'stripe'
 
-// Singleton do cliente Stripe para uso no servidor
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-02-24.acacia',
-  typescript: false,
-})
+// Inicialização lazy — evita erros durante `next build` quando
+// as variáveis de ambiente ainda não estão disponíveis.
+// O cliente só é criado na primeira chamada em runtime.
+let _stripe = null
+
+export function getStripe() {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY
+    if (!key) {
+      throw new Error(
+        'STRIPE_SECRET_KEY não definido. Adicione a variável de ambiente antes de usar o Stripe.'
+      )
+    }
+    _stripe = new Stripe(key, {
+      apiVersion: '2025-02-24.acacia',
+      typescript: false,
+    })
+  }
+  return _stripe
+}
+
+// Alias de conveniência — mantém compatibilidade com imports existentes
+// sem quebrar nada. Usar getStripe() em novos arquivos.
+export const stripe = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      return getStripe()[prop]
+    },
+  }
+)
 
 // IDs dos preços no Stripe (configurar no painel Stripe e adicionar ao .env)
 export const STRIPE_PLANS = {
