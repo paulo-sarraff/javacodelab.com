@@ -1,0 +1,128 @@
+// Prisma Schema — JavaCodeLab
+// Banco: Neon PostgreSQL (serverless)
+// Docs: https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Necessário para Neon (pooling vs direct)
+}
+
+// ─────────────────────────────────────────────
+// USUÁRIO — sincronizado via Clerk webhook
+// ─────────────────────────────────────────────
+model User {
+  id           String        @id @default(cuid())
+  clerkId      String        @unique
+  email        String        @unique
+  name         String?
+  imageUrl     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  subscription Subscription?
+  orders       Order[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// ASSINATURA — gerenciada pelo Stripe
+// ─────────────────────────────────────────────
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripeCustomerId     String    @unique
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+
+  // Plano: free | monthly | annual | lifetime
+  plan                 String    @default("free")
+  // Status: active | inactive | canceled | past_due | trialing
+  status               String    @default("inactive")
+
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────
+// PRODUTO — catálogo da loja
+// ─────────────────────────────────────────────
+model Product {
+  id             String      @id @default(cuid())
+  name           String
+  slug           String      @unique
+  description    String
+  longDescription String?
+  price          Float       // em centavos BRL
+  originalPrice  Float?      // preço original para mostrar desconto
+  stripePriceId  String?     // ID do Price no Stripe
+  stripeProductId String?    // ID do Product no Stripe
+
+  category       String      // course | ebook | tool | merch
+  imageUrl       String?
+  imageEmoji     String?     // fallback visual
+  tags           String[]
+  features       String[]    // lista de o que está incluído
+  active         Boolean     @default(true)
+  featured       Boolean     @default(false)
+  digital        Boolean     @default(true) // produto digital vs físico
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  orderItems     OrderItem[]
+
+  @@map("products")
+}
+
+// ─────────────────────────────────────────────
+// PEDIDO — compras da loja
+// ─────────────────────────────────────────────
+model Order {
+  id                String      @id @default(cuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id])
+
+  stripeSessionId   String      @unique
+  stripePaymentId   String?
+
+  // Status: pending | completed | refunded | failed
+  status            String      @default("pending")
+  total             Float       // valor total em centavos BRL
+
+  customerEmail     String
+  customerName      String?
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  items             OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+
+  quantity  Int      @default(1)
+  unitPrice Float    // preço no momento da compra
+
+  @@map("order_items")
+}
