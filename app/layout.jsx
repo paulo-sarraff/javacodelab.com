@@ -1,6 +1,9 @@
 import './globals.css'
 import { ClerkProvider } from '@clerk/nextjs'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import JsonLd from '@/components/JsonLd'
+import PostHogProvider from '@/components/PostHogProvider'
+import WebVitals from '@/components/WebVitals'
 
 const BASE_URL = 'https://javacodelab.com'
 
@@ -125,8 +128,18 @@ export default function RootLayout({ children }) {
           <JsonLd data={websiteSchema} />
           <JsonLd data={organizationSchema} />
         </head>
-        <body>{children}</body>
+        <body>
+          <PostHogProvider>
+            <WebVitals />
+            {children}
+          </PostHogProvider>
+        </body>
       </html>
+
+      {/* GA4 — carregado via Partytown (off-main-thread) pelo @next/third-parties */}
+      {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
+      )}
     </ClerkProvider>
   )
 }

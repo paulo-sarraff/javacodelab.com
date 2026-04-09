@@ -1,4 +1,5 @@
 import ArticlePage from '@/components/ArticlePage'
+import ArticleViewTracker from '@/components/ArticleViewTracker'
 import JsonLd from '@/components/JsonLd'
 import { getArticleBySlug, getAllArticles } from '@/data/articles'
 
@@ -99,6 +100,14 @@ export default async function Page({ params }) {
   return (
     <>
       {articleSchema && <JsonLd data={articleSchema} />}
+      {article && (
+        <ArticleViewTracker
+          slug={article.slug}
+          title={article.title}
+          category={article.category}
+          tags={article.tags}
+        />
+      )}
       <ArticlePage />
     </>
   )
