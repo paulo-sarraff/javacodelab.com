@@ -8,6 +8,9 @@ import WebVitals from '@/components/WebVitals'
 const BASE_URL = 'https://javacodelab.com'
 
 export const metadata = {
+  verification: {
+  google: 'RcGfWlT7SV12iYKV8EYsmTw31cJQJ8Xu89ZQIozpv3c', 
+  },
   metadataBase: new URL(BASE_URL),
   title: {
     default: 'JavaCodeLab - Desenvolvimento Java e Spring Framework',
