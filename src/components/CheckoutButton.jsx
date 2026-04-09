@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@clerk/nextjs'
 import { Loader2, Crown, ShoppingCart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { trackEvent, events } from '@/lib/analytics'
 
 /**
  * Botão de checkout que redireciona para o Stripe.
@@ -34,10 +35,17 @@ export default function CheckoutButton({
 
     // Redireciona para login se não autenticado
     if (!isSignedIn) {
+      trackEvent(events.PREMIUM_CTA_CLICK, { plan, productId, authenticated: false })
       const returnPath = plan ? '/premium' : '/loja'
       router.push(`/entrar?redirect_url=${returnPath}`)
       return
     }
+
+    trackEvent(events.CHECKOUT_START, {
+      plan: plan ?? null,
+      product_id: productId ?? null,
+      type: plan ? 'subscription' : 'product',
+    })
 
     setIsLoading(true)
 
