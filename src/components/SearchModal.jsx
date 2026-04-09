@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Search, X, Clock, TrendingUp, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

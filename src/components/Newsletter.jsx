@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { Mail, CheckCircle, AlertCircle, Gift, Star, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'

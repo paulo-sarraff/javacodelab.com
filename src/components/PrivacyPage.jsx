@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Shield, Calendar, Eye, Lock, UserCheck, Database } from 'lucide-react'
 import Header from './Header'
 import Footer from './Footer'
@@ -430,7 +430,7 @@ const PrivacyPage = () => {
                         <li><strong className="text-[#E8E8E8]">Email:</strong> contato@javacodelab.com</li>
                         <li><strong className="text-[#E8E8E8]">Assunto:</strong> "Privacidade e Proteção de Dados"</li>
                         <li><strong className="text-[#E8E8E8]">Página de contato:</strong>{' '}
-                          <Link to="/contato" className="text-[#FFD15A] hover:underline">
+                          <Link href="/contato" className="text-[#FFD15A] hover:underline">
                             javacodelab.com/contato
                           </Link>
                         </li>

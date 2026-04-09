@@ -1,5 +1,7 @@
+'use client'
+
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { 
   Crown, 
   Star, 
@@ -514,7 +516,7 @@ const PremiumPage = () => {
                   size="lg"
                   className="border-2 border-[#02a9f7] text-[#02a9f7] hover:bg-[#02a9f7] hover:text-black font-roboto font-semibold px-8 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105"
                 >
-                  <Link to="/contato">
+                  <Link href="/contato">
                     Falar Conosco
                   </Link>
                 </Button>

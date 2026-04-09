@@ -8,6 +8,7 @@ export const articles = [
     category: "Spring Framework",
     author: "Paulo Sarraff",
     publishDate: "24 de Setembro, 2025",
+    sortDate: "2025-09-24",
     readTime: "22 min",
     views: "1.234",
     tags: ["Spring Boot", "JWT", "Spring Security", "Autenticação", "REST API", "Java"],
@@ -23,6 +24,7 @@ export const articles = [
     category: "Spring Framework",
     author: "Paulo Sarraff",
     publishDate: "23 de Setembro, 2025",
+    sortDate: "2025-09-23",
     readTime: "18 min",
     views: "2.847",
     tags: ["Spring Boot", "Microserviços", "Spring Cloud", "Arquitetura", "Docker"],
@@ -38,6 +40,7 @@ export const articles = [
     category: "Testes & Qualidade",
     author: "Paulo Sarraff",
     publishDate: "20 de Setembro, 2025",
+    sortDate: "2025-09-20",
     readTime: "15 min",
     views: "1.856",
     tags: ["JUnit 5", "Testes Unitários", "Mockito", "Java", "TDD"],
@@ -53,6 +56,7 @@ export const articles = [
     category: "Carreiras",
     author: "Paulo Sarraff",
     publishDate: "18 de Setembro, 2025",
+    sortDate: "2025-09-18",
     readTime: "12 min",
     views: "3.421",
     tags: ["Entrevistas", "Carreira", "Java Sênior", "Dicas", "Algoritmos"],
@@ -68,6 +72,7 @@ export const articles = [
     category: "Java Avançado",
     author: "Paulo Sarraff",
     publishDate: "15 de Setembro, 2025",
+    sortDate: "2025-09-15",
     readTime: "16 min",
     views: "2.156",
     tags: ["Java 21", "Virtual Threads", "Pattern Matching", "LTS", "Performance"],
@@ -83,6 +88,7 @@ export const articles = [
     category: "Arquitetura",
     author: "Paulo Sarraff",
     publishDate: "12 de Setembro, 2025",
+    sortDate: "2025-09-12",
     readTime: "20 min",
     views: "1.789",
     tags: ["Docker", "Containerização", "Deploy", "DevOps", "Kubernetes"],
@@ -98,6 +104,7 @@ export const articles = [
     category: "Spring Framework",
     author: "Paulo Sarraff",
     publishDate: "10 de Setembro, 2025",
+    sortDate: "2025-09-10",
     readTime: "14 min",
     views: "1.543",
     tags: ["Spring Data JPA", "Performance", "Hibernate", "SQL", "Otimização"],
@@ -113,6 +120,7 @@ export const articles = [
     category: "Java para Iniciantes",
     author: "Paulo Sarraff",
     publishDate: "8 de Setembro, 2025",
+    sortDate: "2025-09-08",
     readTime: "11 min",
     views: "2.234",
     tags: ["Clean Code", "SOLID", "Refatoração", "Boas Práticas", "Java"],
@@ -142,8 +150,8 @@ export const getFeaturedArticles = (limit = 5) => {
 }
 
 export const getLatestArticles = (limit = 6) => {
-  return articles
-    .sort((a, b) => new Date(b.publishDate) - new Date(a.publishDate))
+  return [...articles]
+    .sort((a, b) => new Date(b.sortDate) - new Date(a.sortDate))
     .slice(0, limit)
 }
 
@@ -157,7 +165,7 @@ export const getRelatedArticles = (currentArticleId, category, limit = 3) => {
 }
 
 export const getPopularArticles = (limit = 4) => {
-  return articles
+  return [...articles]
     .sort((a, b) => parseInt(b.views.replace(/\D/g, '')) - parseInt(a.views.replace(/\D/g, '')))
     .slice(0, limit)
 }

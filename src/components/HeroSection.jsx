@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { ArrowRight, Sparkles, Code2, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -45,7 +45,7 @@ const HeroSection = () => {
             size="lg"
             className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-semibold px-8 py-4 rounded-2xl text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
           >
-            <Link to="/categoria/spring-framework" className="flex items-center gap-2">
+            <Link href="/categoria/spring-framework" className="flex items-center gap-2">
               <BookOpen className="w-5 h-5" />
               Explorar Artigos
               <ArrowRight className="w-5 h-5" />
@@ -58,7 +58,7 @@ const HeroSection = () => {
             size="lg"
             className="border-2 border-[#02a9f7] text-[#02a9f7] hover:bg-[#02a9f7] hover:text-black font-roboto font-semibold px-8 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105"
           >
-            <Link to="/premium" className="flex items-center gap-2">
+            <Link href="/premium" className="flex items-center gap-2">
               <Sparkles className="w-5 h-5" />
               Conteúdo Premium
             </Link>

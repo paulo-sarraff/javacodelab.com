@@ -1,6 +1,8 @@
-import { useParams } from 'react-router-dom'
+'use client'
+
+import { useParams } from 'next/navigation'
 import { Calendar, Clock, User, Tag, Eye, ArrowLeft } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import Header from './Header'
 import Footer from './Footer'
 import CodeBlock from './CodeBlock'
@@ -24,7 +26,7 @@ const ArticlePage = () => {
             <p className="text-[#E8E8E8]/70 font-roboto mb-8">
               O artigo que você está procurando não existe ou foi removido.
             </p>
-            <Link to="/">
+            <Link href="/">
               <Button className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Voltar para Home
@@ -971,11 +973,11 @@ logging:
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm text-[#E8E8E8]/60 font-roboto mb-8">
-            <Link to="/" className="hover:text-[#FFD15A] transition-colors duration-200">
+            <Link href="/" className="hover:text-[#FFD15A] transition-colors duration-200">
               Home
             </Link>
             <span>/</span>
-            <Link to="/blog" className="hover:text-[#FFD15A] transition-colors duration-200">
+            <Link href="/blog" className="hover:text-[#FFD15A] transition-colors duration-200">
               Blog
             </Link>
             <span>/</span>
@@ -988,7 +990,7 @@ logging:
             {/* Article Header */}
             <header className="mb-12">
               {/* Back Button */}
-              <Link to="/" className="inline-flex items-center gap-2 text-[#E8E8E8]/70 hover:text-[#FFD15A] font-roboto mb-6 transition-colors duration-200">
+              <Link href="/" className="inline-flex items-center gap-2 text-[#E8E8E8]/70 hover:text-[#FFD15A] font-roboto mb-6 transition-colors duration-200">
                 <ArrowLeft className="w-4 h-4" />
                 Voltar para Home
               </Link>
@@ -1081,7 +1083,7 @@ logging:
 
             {/* Back to Home */}
             <div className="text-center my-12">
-              <Link to="/">
+              <Link href="/">
                 <Button className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Voltar para Home
