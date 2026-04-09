@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Code2, Users, BookOpen, Award, Coffee, Heart, Target, Zap } from 'lucide-react'
 import Header from './Header'
 import Footer from './Footer'
@@ -194,7 +194,7 @@ const AboutPage = () => {
                 size="lg"
                 className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium"
               >
-                <Link to="/">
+                <Link href="/">
                   Explorar Artigos
                 </Link>
               </Button>
@@ -205,7 +205,7 @@ const AboutPage = () => {
                 size="lg"
                 className="border-[#FFD15A] text-[#FFD15A] hover:bg-[#FFD15A]/10 font-roboto font-medium"
               >
-                <Link to="/contato">
+                <Link href="/contato">
                   Entre em Contato
                 </Link>
               </Button>

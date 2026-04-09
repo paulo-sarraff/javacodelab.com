@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { FileText, Calendar, AlertTriangle } from 'lucide-react'
 import Header from './Header'
 import Footer from './Footer'
@@ -191,7 +191,7 @@ const TermsPage = () => {
                   <div className="text-[#E8E8E8]/80 font-roboto leading-relaxed space-y-4">
                     <p>
                       A coleta, uso e proteção de dados pessoais são regidos por nossa{' '}
-                      <Link to="/politica-privacidade" className="text-[#FFD15A] hover:underline">
+                      <Link href="/politica-privacidade" className="text-[#FFD15A] hover:underline">
                         Política de Privacidade
                       </Link>, que está em conformidade com a Lei Geral de Proteção de Dados (LGPD).
                     </p>
@@ -288,7 +288,7 @@ const TermsPage = () => {
                       <li><strong className="text-[#E8E8E8]">Email:</strong> contato@javacodelab.com</li>
                       <li><strong className="text-[#E8E8E8]">Site:</strong> javacodelab.com</li>
                       <li><strong className="text-[#E8E8E8]">Página de contato:</strong>{' '}
-                        <Link to="/contato" className="text-[#FFD15A] hover:underline">
+                        <Link href="/contato" className="text-[#FFD15A] hover:underline">
                           javacodelab.com/contato
                         </Link>
                       </li>

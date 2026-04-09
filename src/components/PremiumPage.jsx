@@ -1,5 +1,7 @@
+'use client'
+
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { 
   Crown, 
   Star, 
@@ -20,6 +22,7 @@ import {
 import Header from './Header'
 import Footer from './Footer'
 import { Button } from '@/components/ui/button'
+import CheckoutButton from '@/components/CheckoutButton'
 
 const PremiumPage = () => {
   const [selectedPlan, setSelectedPlan] = useState('monthly')
@@ -74,7 +77,7 @@ const PremiumPage = () => {
       popular: false
     },
     {
-      id: 'yearly',
+      id: 'annual',
       name: 'Anual',
       price: 'R$ 290',
       period: '/ano',
@@ -417,15 +420,11 @@ const PremiumPage = () => {
                     ))}
                   </div>
 
-                  <Button 
-                    className={`w-full py-3 rounded-xl font-roboto font-semibold transition-all duration-300 ${
-                      plan.popular
-                        ? 'bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90'
-                        : 'bg-[#02a9f7] text-white hover:bg-[#02a9f7]/90'
-                    }`}
-                  >
-                    Começar Agora
-                  </Button>
+                  <CheckoutButton
+                    plan={plan.id}
+                    label="Começar Agora"
+                    variant={plan.popular ? 'primary' : 'secondary'}
+                  />
                 </div>
               ))}
             </div>
@@ -514,7 +513,7 @@ const PremiumPage = () => {
                   size="lg"
                   className="border-2 border-[#02a9f7] text-[#02a9f7] hover:bg-[#02a9f7] hover:text-black font-roboto font-semibold px-8 py-4 rounded-2xl text-lg transition-all duration-300 hover:scale-105"
                 >
-                  <Link to="/contato">
+                  <Link href="/contato">
                     Falar Conosco
                   </Link>
                 </Button>

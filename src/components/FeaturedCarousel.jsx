@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Calendar, User, Clock, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getFeaturedArticles } from '../data/articles'
@@ -152,7 +154,7 @@ const FeaturedCarousel = () => {
                         </div>
 
                         {/* CTA Button */}
-                        <Link to={`/artigo/${article.slug}`}>
+                        <Link href={`/artigo/${article.slug}`}>
                           <Button 
                             size="lg"
                             className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-semibold group"

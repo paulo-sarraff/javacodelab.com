@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Code2, Github, Linkedin, Twitter, Mail, Heart, ArrowUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { categories } from '../data/articles'
@@ -32,7 +32,7 @@ const Footer = () => {
         <div className="py-12 grid md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Brand Section */}
           <div className="lg:col-span-1">
-            <Link to="/" className="flex items-center gap-3 mb-6">
+            <Link href="/" className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-gradient-to-br from-[#FFD15A] to-[#02a9f7] rounded-lg flex items-center justify-center">
                 <Code2 className="w-6 h-6 text-black" />
               </div>

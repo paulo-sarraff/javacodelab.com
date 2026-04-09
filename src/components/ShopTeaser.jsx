@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { ShoppingBag, Star, ArrowRight, Zap, Gift } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -155,7 +155,7 @@ const ShopTeaser = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link to="/loja">
+            <Link href="/loja">
               <Button 
                 size="lg"
                 className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-semibold px-8 group"
