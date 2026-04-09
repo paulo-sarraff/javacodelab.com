@@ -1,4 +1,5 @@
 import './globals.css'
+import { ClerkProvider } from '@clerk/nextjs'
 import JsonLd from '@/components/JsonLd'
 
 const BASE_URL = 'https://javacodelab.com'
@@ -113,12 +114,19 @@ const organizationSchema = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR">
-      <head>
-        <JsonLd data={websiteSchema} />
-        <JsonLd data={organizationSchema} />
-      </head>
-      <body>{children}</body>
-    </html>
+    <ClerkProvider
+      signInUrl="/entrar"
+      signUpUrl="/cadastro"
+      afterSignInUrl="/dashboard"
+      afterSignUpUrl="/dashboard"
+    >
+      <html lang="pt-BR">
+        <head>
+          <JsonLd data={websiteSchema} />
+          <JsonLd data={organizationSchema} />
+        </head>
+        <body>{children}</body>
+      </html>
+    </ClerkProvider>
   )
 }
