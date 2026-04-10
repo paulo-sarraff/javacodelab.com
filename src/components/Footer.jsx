@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { Code2, Github, Linkedin, Twitter, Mail, Heart, ArrowUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'

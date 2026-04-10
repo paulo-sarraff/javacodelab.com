@@ -1,6 +1,9 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+
+// Página autenticada + dados do banco — nunca deve ser pré-renderizada em build time
+export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'

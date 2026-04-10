@@ -5,6 +5,14 @@ import JsonLd from '@/components/JsonLd'
 import PostHogProvider from '@/components/PostHogProvider'
 import WebVitals from '@/components/WebVitals'
 
+// ClerkProvider (RSC) chama cookies() internamente para pré-popular auth state.
+// Em Next.js 15, cookies() lança erro em páginas estaticamente pré-renderizadas
+// porque não há contexto de request real em build time.
+// force-dynamic faz todas as rotas serem renderizadas por request no servidor
+// (com headers/cookies reais), eliminando o problema na raiz.
+// Trade-off: sem static prerendering — compensado pela Edge Network da Vercel.
+export const dynamic = 'force-dynamic'
+
 const BASE_URL = 'https://javacodelab.com'
 
 export const metadata = {
@@ -137,12 +145,12 @@ export default function RootLayout({ children }) {
             {children}
           </PostHogProvider>
         </body>
-      </html>
 
-      {/* GA4 — carregado via Partytown (off-main-thread) pelo @next/third-parties */}
-      {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
-        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
-      )}
+        {/* GA4 — carregado via @next/third-parties (off-main-thread) */}
+        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
+        )}
+      </html>
     </ClerkProvider>
   )
 }

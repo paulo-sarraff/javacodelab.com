@@ -1,5 +1,8 @@
 'use client'
 
+// Página com botões de checkout (useAuth) — não pré-renderizar em build time
+export const dynamic = 'force-dynamic'
+
 import { useState } from 'react'
 import Link from 'next/link'
 import Header from '@/components/Header'

@@ -14,6 +14,12 @@ import { Crown, Lock } from 'lucide-react'
  *   </PremiumGuard>
  */
 export default async function PremiumGuard({ children, fallback }) {
+  // Se o Clerk não estiver configurado (ex.: build sem env vars),
+  // trata como não autenticado e exibe o fallback sem lançar erro.
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    return fallback ?? <DefaultFallback reason="unauthenticated" />
+  }
+
   const { userId } = await auth()
 
   // Não autenticado

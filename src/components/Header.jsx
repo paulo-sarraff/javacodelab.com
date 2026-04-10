@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useAuth, UserButton } from '@clerk/nextjs'
+import dynamic from 'next/dynamic'
 import {
   Menu,
   X,
@@ -13,17 +13,21 @@ import {
   ShoppingBag,
   Mail,
   Info,
-  Crown,
-  LayoutDashboard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SearchModal from './SearchModal'
+
+// Importado com ssr:false — evita que useAuth/UserButton do Clerk sejam chamados
+// durante SSR/prerendering quando ClerkProvider pode não estar disponível.
+const HeaderAuth = dynamic(() => import('./HeaderAuth'), {
+  ssr: false,
+  loading: () => <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />,
+})
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const { isSignedIn } = useAuth()
 
   const mainNavigation = [
     { name: 'Home', href: '/' },
@@ -86,7 +90,7 @@ const Header = () => {
                 </Link>
               ))}
 
-              {/* Dropdown Menu */}
+              {/* Dropdown */}
               <div className="relative">
                 <button
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -138,41 +142,8 @@ const Header = () => {
                 <Search className="w-4 h-4" />
               </Button>
 
-              {isSignedIn ? (
-                <>
-                  <Link
-                    href="/dashboard"
-                    className="flex items-center gap-1.5 text-sm font-roboto text-[#E8E8E8]/70 hover:text-[#FFD15A] transition-colors"
-                  >
-                    <LayoutDashboard className="w-4 h-4" />
-                    Dashboard
-                  </Link>
-                  <UserButton
-                    afterSignOutUrl="/"
-                    appearance={{
-                      elements: {
-                        avatarBox: 'w-8 h-8',
-                      },
-                    }}
-                  />
-                </>
-              ) : (
-                <>
-                  <Link
-                    href="/entrar"
-                    className="text-sm font-roboto text-[#E8E8E8]/70 hover:text-[#E8E8E8] transition-colors"
-                  >
-                    Entrar
-                  </Link>
-                  <Link
-                    href="/premium"
-                    className="inline-flex items-center gap-1.5 bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium text-sm px-4 py-2 rounded-xl transition-all duration-200"
-                  >
-                    <Crown className="w-3.5 h-3.5" />
-                    Premium
-                  </Link>
-                </>
-              )}
+              {/* Auth section — client-only, sem SSR */}
+              <HeaderAuth />
             </div>
 
             {/* Mobile controls */}
@@ -185,12 +156,12 @@ const Header = () => {
               >
                 <Search className="w-5 h-5" />
               </Button>
-              {isSignedIn && (
-                <UserButton
-                  afterSignOutUrl="/"
-                  appearance={{ elements: { avatarBox: 'w-7 h-7' } }}
-                />
-              )}
+
+              {/* UserButton mobile — client-only */}
+              <div className="flex items-center">
+                <HeaderAuth mobile />
+              </div>
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -221,17 +192,6 @@ const Header = () => {
                   </Link>
                 ))}
 
-                {isSignedIn && (
-                  <Link
-                    href="/dashboard"
-                    className="flex items-center gap-2 font-roboto font-medium py-2 px-3 rounded-xl text-[#E8E8E8]/80 hover:text-[#FFD15A] hover:bg-[#FFD15A]/10 transition-all duration-200"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <LayoutDashboard className="w-4 h-4" />
-                    Dashboard
-                  </Link>
-                )}
-
                 {dropdownItems.map((section) => (
                   <div key={section.category} className="pt-3 border-t border-white/10">
                     <h3 className="text-xs font-geist font-semibold text-[#E8E8E8]/40 mb-2 px-3 uppercase tracking-wider">
@@ -251,24 +211,7 @@ const Header = () => {
                   </div>
                 ))}
 
-                {!isSignedIn && (
-                  <div className="flex items-center gap-3 pt-3 border-t border-white/10">
-                    <Link
-                      href="/entrar"
-                      className="flex-1 text-center border border-white/20 text-[#E8E8E8]/70 hover:text-[#E8E8E8] font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Entrar
-                    </Link>
-                    <Link
-                      href="/premium"
-                      className="flex-1 text-center bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Premium
-                    </Link>
-                  </div>
-                )}
+                {/* Mobile auth buttons — client-only, renderizados pelo HeaderAuth */}
               </nav>
             </div>
           )}
