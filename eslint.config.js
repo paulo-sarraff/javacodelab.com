@@ -1,36 +1,28 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
+import { dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { FlatCompat } from '@eslint/eslintrc'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+const compat = new FlatCompat({ baseDirectory: __dirname })
 
 export default [
-  // Ignorar pastas geradas/compiladas
-  { ignores: ['.next', 'node_modules', 'dist'] },
+  // next/core-web-vitals inclui: @next/next, react, react-hooks,
+  // import e todas as regras recomendadas para App Router.
+  // É o mesmo preset que create-next-app gera por padrão.
+  ...compat.extends('next/core-web-vitals'),
 
+  // Ignora pastas geradas — sem isso o ESLint tenta analisar o bundle
   {
-    files: ['**/*.{js,jsx}'],
-    plugins: {
-      'react-hooks': reactHooks,
-    },
-    languageOptions: {
-      ecmaVersion: 2020,
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-      },
-      parserOptions: {
-        ecmaVersion: 'latest',
-        ecmaFeatures: { jsx: true },
-        sourceType: 'module',
-      },
-    },
+    ignores: ['.next/**', 'node_modules/**', 'dist/**'],
+  },
+
+  // Overrides locais sem sobrescrever as regras do Next.js
+  {
     rules: {
-      ...js.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
-      // Warn em vez de error para não bloquear builds com variáveis legítimas
-      'no-unused-vars': [
-        'warn',
-        { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' },
-      ],
+      // Aviso em vez de erro — não bloqueia builds por vars/args não usados
+      'no-unused-vars': ['warn', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
     },
   },
 ]
