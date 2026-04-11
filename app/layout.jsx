@@ -112,7 +112,23 @@ const organizationSchema = {
   },
 }
 
+// ClerkProvider é renderizado condicionalmente.
+// Sem a chave configurada, o layout funciona normalmente mas sem autenticação.
+const hasClerkKey = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
 export default function RootLayout({ children }) {
+  const htmlTree = (
+    <html lang="pt-BR">
+      <head>
+        <JsonLd data={websiteSchema} />
+        <JsonLd data={organizationSchema} />
+      </head>
+      <body>{children}</body>
+    </html>
+  )
+
+  if (!hasClerkKey) return htmlTree
+
   return (
     <ClerkProvider
       signInUrl="/entrar"
@@ -120,13 +136,7 @@ export default function RootLayout({ children }) {
       afterSignInUrl="/dashboard"
       afterSignUpUrl="/dashboard"
     >
-      <html lang="pt-BR">
-        <head>
-          <JsonLd data={websiteSchema} />
-          <JsonLd data={organizationSchema} />
-        </head>
-        <body>{children}</body>
-      </html>
+      {htmlTree}
     </ClerkProvider>
   )
 }
