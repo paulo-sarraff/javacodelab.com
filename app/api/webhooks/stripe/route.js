@@ -1,4 +1,4 @@
-import { stripe } from '@/lib/stripe'
+import { stripe, STRIPE_PLANS } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 
 // Necessário: corpo raw para verificar assinatura do Stripe
@@ -30,6 +30,9 @@ export async function POST(request) {
         const { clerkUserId, dbUserId, plan, productId } = session.metadata ?? {}
 
         if (plan && dbUserId) {
+          // Resolve o priceId via configuração local — line_items não vem expandido no evento webhook
+          const stripePriceId = STRIPE_PLANS[plan]?.priceId ?? null
+
           // Ativa/atualiza assinatura premium
           await prisma.subscription.upsert({
             where: { userId: dbUserId },
@@ -37,13 +40,14 @@ export async function POST(request) {
               userId: dbUserId,
               stripeCustomerId: session.customer,
               stripeSubscriptionId: session.subscription ?? null,
-              stripePriceId: session.line_items?.data[0]?.price?.id ?? null,
+              stripePriceId,
               plan,
               status: 'active',
             },
             update: {
               stripeCustomerId: session.customer,
               stripeSubscriptionId: session.subscription ?? null,
+              stripePriceId,
               plan,
               status: 'active',
             },

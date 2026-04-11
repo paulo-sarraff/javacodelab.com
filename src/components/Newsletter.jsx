@@ -63,7 +63,7 @@ const handleSubmit = async (e) => {
           </div>
         </div>
 
-        {submitStatus === 'success' && (
+        {isSuccess && (
           <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-3">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
             <div>
@@ -77,7 +77,7 @@ const handleSubmit = async (e) => {
           </div>
         )}
 
-        {submitStatus === 'error' && (
+        {!isSuccess && message && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
             <div>
@@ -85,7 +85,7 @@ const handleSubmit = async (e) => {
                 Erro ao cadastrar email
               </p>
               <p className="text-[#E8E8E8]/80 text-sm">
-                Tente novamente ou entre em contato conosco.
+                {message}
               </p>
             </div>
           </div>
@@ -145,7 +145,7 @@ const handleSubmit = async (e) => {
           </p>
         </div>
 
-        {submitStatus === 'success' && (
+        {isSuccess && (
           <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-center">
             <CheckCircle className="w-5 h-5 text-green-400 mx-auto mb-1" />
             <p className="text-green-400 text-sm font-roboto">
@@ -154,11 +154,11 @@ const handleSubmit = async (e) => {
           </div>
         )}
 
-        {submitStatus === 'error' && (
+        {!isSuccess && message && (
           <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-center">
             <AlertCircle className="w-5 h-5 text-red-400 mx-auto mb-1" />
             <p className="text-red-400 text-sm font-roboto">
-              Erro ao cadastrar
+              {message}
             </p>
           </div>
         )}
@@ -199,7 +199,7 @@ const handleSubmit = async (e) => {
           </div>
 
           <div className="flex-1 max-w-md">
-            {submitStatus === 'success' && (
+            {isSuccess && (
               <div className="mb-3 p-2 bg-green-500/10 border border-green-500/20 rounded-lg text-center">
                 <p className="text-green-400 text-sm font-roboto">
                   ✅ Cadastro realizado com sucesso!
@@ -207,10 +207,10 @@ const handleSubmit = async (e) => {
               </div>
             )}
 
-            {submitStatus === 'error' && (
+            {!isSuccess && message && (
               <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-center">
                 <p className="text-red-400 text-sm font-roboto">
-                  ❌ Erro ao cadastrar. Tente novamente.
+                  ❌ {message}
                 </p>
               </div>
             )}
@@ -251,7 +251,7 @@ const handleSubmit = async (e) => {
         </p>
       </div>
 
-      {submitStatus === 'success' && (
+      {isSuccess && (
         <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-3">
           <CheckCircle className="w-5 h-5 text-green-400" />
           <p className="text-green-400 font-roboto">
@@ -260,11 +260,11 @@ const handleSubmit = async (e) => {
         </div>
       )}
 
-      {submitStatus === 'error' && (
+      {!isSuccess && message && (
         <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-red-400" />
           <p className="text-red-400 font-roboto">
-            Erro ao cadastrar email. Tente novamente.
+            {message}
           </p>
         </div>
       )}

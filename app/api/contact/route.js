@@ -1,6 +1,28 @@
 import nodemailer from 'nodemailer'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(request) {
+  // Rate limit: 3 mensagens por IP por minuto
+  const { success, retryAfter } = rateLimit({
+    ip: getClientIp(request),
+    key: 'contact',
+    limit: 3,
+    windowMs: 60_000,
+  })
+
+  if (!success) {
+    return Response.json(
+      {
+        error: 'Too many requests',
+        message: 'Muitas tentativas. Aguarde alguns segundos e tente novamente.',
+      },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(retryAfter) },
+      }
+    )
+  }
+
   try {
     const { name, email, subject, message } = await request.json()
 

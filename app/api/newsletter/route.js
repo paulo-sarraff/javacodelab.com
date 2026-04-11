@@ -1,4 +1,24 @@
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
+
 export async function POST(request) {
+  // Rate limit: 5 cadastros por IP por minuto
+  const { success, retryAfter } = rateLimit({
+    ip: getClientIp(request),
+    key: 'newsletter',
+    limit: 5,
+    windowMs: 60_000,
+  })
+
+  if (!success) {
+    return Response.json(
+      { success: false, message: 'Muitas tentativas. Aguarde alguns segundos e tente novamente.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(retryAfter) },
+      }
+    )
+  }
+
   try {
     const { email } = await request.json()
 
@@ -70,3 +90,4 @@ export async function POST(request) {
     )
   }
 }
+
