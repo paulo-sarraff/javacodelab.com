@@ -6,9 +6,14 @@ import { useAuth } from '@clerk/nextjs'
 import { Loader2, Crown, ShoppingCart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+const HAS_CLERK =
+  process.env.NODE_ENV === 'development' ||
+  !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
 /**
  * Botão de checkout que redireciona para o Stripe.
- * Usado tanto em PremiumPage (planos) quanto na Loja (produtos).
+ * Exporta um wrapper que decide qual implementação usar
+ * dependendo se o ClerkProvider está disponível.
  *
  * Props:
  *  - plan: 'monthly' | 'annual' | 'lifetime'  (para assinaturas)
@@ -17,16 +22,26 @@ import { Button } from '@/components/ui/button'
  *  - variant: 'primary' | 'secondary'
  *  - className: classes extras
  */
-export default function CheckoutButton({
-  plan,
-  productId,
-  label = 'Começar Agora',
-  variant = 'primary',
-  className = '',
-}) {
+export default function CheckoutButton(props) {
+  // HAS_CLERK é constante de build-time — não viola regras de hooks
+  return HAS_CLERK ? <CheckoutButtonAuthenticated {...props} /> : <CheckoutButtonGuest {...props} />
+}
+
+// Versão com Clerk — useAuth() só chamado aqui quando ClerkProvider existe
+function CheckoutButtonAuthenticated({ plan, productId, label = 'Começar Agora', variant = 'primary', className = '' }) {
+  const { isSignedIn } = useAuth()
+  return <CheckoutButtonUI plan={plan} productId={productId} label={label} variant={variant} className={className} isSignedIn={!!isSignedIn} />
+}
+
+// Versão sem Clerk — sempre trata como visitante (redireciona para login)
+function CheckoutButtonGuest({ plan, productId, label = 'Começar Agora', variant = 'primary', className = '' }) {
+  return <CheckoutButtonUI plan={plan} productId={productId} label={label} variant={variant} className={className} isSignedIn={false} />
+}
+
+// UI compartilhada — recebe isSignedIn como prop, sem hooks do Clerk
+function CheckoutButtonUI({ plan, productId, label, variant, className, isSignedIn }) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
-  const { isSignedIn } = useAuth()
   const router = useRouter()
 
   const handleCheckout = async () => {
@@ -54,7 +69,6 @@ export default function CheckoutButton({
         throw new Error(data.error || 'Erro ao iniciar pagamento')
       }
 
-      // Redireciona para o Stripe Checkout (página hospedada pelo Stripe)
       window.location.href = data.url
     } catch (err) {
       console.error('[CHECKOUT]', err)

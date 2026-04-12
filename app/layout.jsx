@@ -112,9 +112,13 @@ const organizationSchema = {
   },
 }
 
-// ClerkProvider é renderizado condicionalmente.
-// Sem a chave configurada, o layout funciona normalmente mas sem autenticação.
-const hasClerkKey = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+// Renderiza ClerkProvider quando:
+// - Estiver em desenvolvimento (keyless mode automático do Clerk), OU
+// - A chave estiver configurada em produção
+// Isso evita quebrar o build sem credenciais e ainda permite dev com keyless.
+const hasClerk =
+  process.env.NODE_ENV === 'development' ||
+  !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 export default function RootLayout({ children }) {
   const htmlTree = (
@@ -127,7 +131,7 @@ export default function RootLayout({ children }) {
     </html>
   )
 
-  if (!hasClerkKey) return htmlTree
+  if (!hasClerk) return htmlTree
 
   return (
     <ClerkProvider

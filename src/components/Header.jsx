@@ -19,11 +19,109 @@ import {
 import { Button } from '@/components/ui/button'
 import SearchModal from './SearchModal'
 
+// Inlined em build — false quando chave não está configurada em produção
+const HAS_CLERK =
+  process.env.NODE_ENV === 'development' ||
+  !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+// Sub-componentes isolados para que useAuth() só seja chamado
+// quando ClerkProvider está garantidamente presente na árvore.
+
+function DesktopAuthButtons() {
+  const { isSignedIn } = useAuth()
+  if (isSignedIn) {
+    return (
+      <>
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-1.5 text-sm font-roboto text-[#E8E8E8]/70 hover:text-[#FFD15A] transition-colors"
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          Dashboard
+        </Link>
+        <UserButton
+          afterSignOutUrl="/"
+          appearance={{ elements: { avatarBox: 'w-8 h-8' } }}
+        />
+      </>
+    )
+  }
+  return <GuestButtons />
+}
+
+function GuestButtons() {
+  return (
+    <>
+      <Link
+        href="/entrar"
+        className="text-sm font-roboto text-[#E8E8E8]/70 hover:text-[#E8E8E8] transition-colors"
+      >
+        Entrar
+      </Link>
+      <Link
+        href="/premium"
+        className="inline-flex items-center gap-1.5 bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium text-sm px-4 py-2 rounded-xl transition-all duration-200"
+      >
+        <Crown className="w-3.5 h-3.5" />
+        Premium
+      </Link>
+    </>
+  )
+}
+
+function MobileUserButton() {
+  const { isSignedIn } = useAuth()
+  if (!isSignedIn) return null
+  return (
+    <UserButton
+      afterSignOutUrl="/"
+      appearance={{ elements: { avatarBox: 'w-7 h-7' } }}
+    />
+  )
+}
+
+function MobileDashboardLink({ onClose }) {
+  const { isSignedIn } = useAuth()
+  if (!isSignedIn) return null
+  return (
+    <Link
+      href="/dashboard"
+      className="flex items-center gap-2 font-roboto font-medium py-2 px-3 rounded-xl text-[#E8E8E8]/80 hover:text-[#FFD15A] hover:bg-[#FFD15A]/10 transition-all duration-200"
+      onClick={onClose}
+    >
+      <LayoutDashboard className="w-4 h-4" />
+      Dashboard
+    </Link>
+  )
+}
+
+function MobileGuestLinks({ onClose }) {
+  const { isSignedIn } = useAuth()
+  if (isSignedIn) return null
+  return (
+    <div className="flex items-center gap-3 pt-3 border-t border-white/10">
+      <Link
+        href="/entrar"
+        className="flex-1 text-center border border-white/20 text-[#E8E8E8]/70 hover:text-[#E8E8E8] font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
+        onClick={onClose}
+      >
+        Entrar
+      </Link>
+      <Link
+        href="/premium"
+        className="flex-1 text-center bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
+        onClick={onClose}
+      >
+        Premium
+      </Link>
+    </div>
+  )
+}
+
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const { isSignedIn } = useAuth()
 
   const mainNavigation = [
     { name: 'Home', href: '/' },
@@ -138,41 +236,7 @@ const Header = () => {
                 <Search className="w-4 h-4" />
               </Button>
 
-              {isSignedIn ? (
-                <>
-                  <Link
-                    href="/dashboard"
-                    className="flex items-center gap-1.5 text-sm font-roboto text-[#E8E8E8]/70 hover:text-[#FFD15A] transition-colors"
-                  >
-                    <LayoutDashboard className="w-4 h-4" />
-                    Dashboard
-                  </Link>
-                  <UserButton
-                    afterSignOutUrl="/"
-                    appearance={{
-                      elements: {
-                        avatarBox: 'w-8 h-8',
-                      },
-                    }}
-                  />
-                </>
-              ) : (
-                <>
-                  <Link
-                    href="/entrar"
-                    className="text-sm font-roboto text-[#E8E8E8]/70 hover:text-[#E8E8E8] transition-colors"
-                  >
-                    Entrar
-                  </Link>
-                  <Link
-                    href="/premium"
-                    className="inline-flex items-center gap-1.5 bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium text-sm px-4 py-2 rounded-xl transition-all duration-200"
-                  >
-                    <Crown className="w-3.5 h-3.5" />
-                    Premium
-                  </Link>
-                </>
-              )}
+              {HAS_CLERK ? <DesktopAuthButtons /> : <GuestButtons />}
             </div>
 
             {/* Mobile controls */}
@@ -185,12 +249,7 @@ const Header = () => {
               >
                 <Search className="w-5 h-5" />
               </Button>
-              {isSignedIn && (
-                <UserButton
-                  afterSignOutUrl="/"
-                  appearance={{ elements: { avatarBox: 'w-7 h-7' } }}
-                />
-              )}
+              {HAS_CLERK && <MobileUserButton />}
               <Button
                 variant="ghost"
                 size="sm"
@@ -221,16 +280,7 @@ const Header = () => {
                   </Link>
                 ))}
 
-                {isSignedIn && (
-                  <Link
-                    href="/dashboard"
-                    className="flex items-center gap-2 font-roboto font-medium py-2 px-3 rounded-xl text-[#E8E8E8]/80 hover:text-[#FFD15A] hover:bg-[#FFD15A]/10 transition-all duration-200"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <LayoutDashboard className="w-4 h-4" />
-                    Dashboard
-                  </Link>
-                )}
+                {HAS_CLERK && <MobileDashboardLink onClose={() => setIsMenuOpen(false)} />}
 
                 {dropdownItems.map((section) => (
                   <div key={section.category} className="pt-3 border-t border-white/10">
@@ -251,24 +301,27 @@ const Header = () => {
                   </div>
                 ))}
 
-                {!isSignedIn && (
-                  <div className="flex items-center gap-3 pt-3 border-t border-white/10">
-                    <Link
-                      href="/entrar"
-                      className="flex-1 text-center border border-white/20 text-[#E8E8E8]/70 hover:text-[#E8E8E8] font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Entrar
-                    </Link>
-                    <Link
-                      href="/premium"
-                      className="flex-1 text-center bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Premium
-                    </Link>
-                  </div>
-                )}
+                {HAS_CLERK
+                  ? <MobileGuestLinks onClose={() => setIsMenuOpen(false)} />
+                  : (
+                    <div className="flex items-center gap-3 pt-3 border-t border-white/10">
+                      <Link
+                        href="/entrar"
+                        className="flex-1 text-center border border-white/20 text-[#E8E8E8]/70 hover:text-[#E8E8E8] font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        Entrar
+                      </Link>
+                      <Link
+                        href="/premium"
+                        className="flex-1 text-center bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium py-2.5 rounded-xl text-sm transition-colors"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        Premium
+                      </Link>
+                    </div>
+                  )
+                }
               </nav>
             </div>
           )}
