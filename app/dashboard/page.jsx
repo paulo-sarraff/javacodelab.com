@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server'
+import { auth, currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
     redirect('/entrar?redirect_url=/dashboard')
   }
 
-  const user = await prisma.user.findUnique({
+  let user = await prisma.user.findUnique({
     where: { clerkId: userId },
     include: {
       subscription: true,
@@ -72,7 +72,24 @@ export default async function DashboardPage() {
   })
 
   if (!user) {
-    redirect('/entrar')
+    // Primeiro acesso: cria o registro no banco a partir dos dados do Clerk
+    const clerkUser = await currentUser()
+    user = await prisma.user.create({
+      data: {
+        clerkId: userId,
+        email: clerkUser.emailAddresses[0].emailAddress,
+        name: `${clerkUser.firstName ?? ''} ${clerkUser.lastName ?? ''}`.trim() || null,
+        imageUrl: clerkUser.imageUrl ?? null,
+      },
+      include: {
+        subscription: true,
+        orders: {
+          include: { items: { include: { product: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+      },
+    })
   }
 
   const subscription = user.subscription

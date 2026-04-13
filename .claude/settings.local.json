@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs wc:*)"
+      "Bash(xargs wc:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx prisma:*)"
     ]
   }
 }

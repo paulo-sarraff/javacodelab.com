@@ -1,5 +1,9 @@
 /node_modules/
 /.idea/
+/.env
 /.env.local
 /.env.local.bak
 /.claude
+
+# clerk configuration (can include secrets)
+/.clerk/
