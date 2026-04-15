@@ -126,3 +126,31 @@ model OrderItem {
 
   @@map("order_items")
 }
+
+// ─────────────────────────────────────────────
+// ARTIGO — conteúdo do blog
+// ─────────────────────────────────────────────
+model Article {
+  id            String    @id @default(cuid())
+  slug          String    @unique
+  title         String
+  excerpt       String
+  // Conteúdo MDX completo — populado na etapa 1.2
+  content       String?   @db.Text
+  // Chave legada para o renderizador de conteúdo (ex: "jwt-complete")
+  contentKey    String?
+  category      String
+  authorName    String    @default("Paulo Sarraff")
+  publishedAt   DateTime
+  readTime      String    // ex: "22 min"
+  views         Int       @default(0)
+  tags          String[]
+  featuredImage String?
+  published     Boolean   @default(false)
+  featured      Boolean   @default(false)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("articles")
+}

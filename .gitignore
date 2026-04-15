@@ -1,5 +1,8 @@
 /node_modules/
+/.next/
 /.idea/
+/.env
 /.env.local
 /.env.local.bak
 /.claude
+/.clerk/
