@@ -4,10 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Calendar, User, Clock, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getFeaturedArticles } from '../data/articles'
-
-const FeaturedCarousel = () => {
-  const articles = getFeaturedArticles(5)
+const FeaturedCarousel = ({ articles = [] }) => {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isAutoPlaying, setIsAutoPlaying] = useState(true)
 

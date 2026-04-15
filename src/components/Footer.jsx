@@ -1,7 +1,15 @@
 import Link from 'next/link'
 import { Code2, Github, Linkedin, Twitter, Mail, Heart, ArrowUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { categories } from '../data/articles'
+
+const categories = [
+  'Spring Framework',
+  'Java para Iniciantes',
+  'Java Avançado',
+  'Testes & Qualidade',
+  'Carreiras',
+  'Arquitetura',
+]
 
 const Footer = () => {
   const currentYear = new Date().getFullYear()

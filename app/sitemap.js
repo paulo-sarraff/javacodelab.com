@@ -1,9 +1,9 @@
-import { getAllArticles, categories } from '@/data/articles'
+import { getAllArticles } from '@/data/articles'
 
 const BASE_URL = 'https://javacodelab.com'
 
-export default function sitemap() {
-  const articles = getAllArticles()
+export default async function sitemap() {
+  const articles = await getAllArticles()
 
   // Rotas estáticas principais
   const staticRoutes = [

@@ -1,17 +1,14 @@
 'use client'
 
-import { useParams } from 'next/navigation'
 import { Calendar, Clock, User, Tag, Eye, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import Header from './Header'
 import Footer from './Footer'
 import CodeBlock from './CodeBlock'
 import { Button } from '@/components/ui/button'
-import { getArticleBySlug } from '../data/articles'
 
-const ArticlePage = () => {
-  const { slug } = useParams()
-  const article = getArticleBySlug(slug)
+const ArticlePage = ({ article }) => {
+  const slug = article?.slug
 
   // Se artigo não encontrado
   if (!article) {

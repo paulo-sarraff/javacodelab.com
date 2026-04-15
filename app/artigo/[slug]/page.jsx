@@ -6,7 +6,7 @@ const BASE_URL = 'https://javacodelab.com'
 
 export async function generateMetadata({ params }) {
   const { slug } = await params
-  const article = getArticleBySlug(slug)
+  const article = await getArticleBySlug(slug)
 
   if (!article) {
     return {
@@ -54,13 +54,13 @@ export async function generateMetadata({ params }) {
 }
 
 export async function generateStaticParams() {
-  const articles = getAllArticles()
+  const articles = await getAllArticles()
   return articles.map((article) => ({ slug: article.slug }))
 }
 
 export default async function Page({ params }) {
   const { slug } = await params
-  const article = getArticleBySlug(slug)
+  const article = await getArticleBySlug(slug)
 
   // Schema.org Article — habilita Rich Snippets no Google
   const articleSchema = article
@@ -99,7 +99,7 @@ export default async function Page({ params }) {
   return (
     <>
       {articleSchema && <JsonLd data={articleSchema} />}
-      <ArticlePage />
+      <ArticlePage article={article} />
     </>
   )
 }

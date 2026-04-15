@@ -5,8 +5,6 @@ import Link from 'next/link'
 import { Search, X, Clock, TrendingUp, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { getAllArticles } from '../data/articles'
-
 const SearchModal = ({ isOpen, onClose }) => {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -45,19 +43,17 @@ const SearchModal = ({ isOpen, onClose }) => {
     }
 
     setIsLoading(true)
-    
-    // Simulate search delay for better UX
-    const searchTimeout = setTimeout(() => {
-      const articles = getAllArticles()
-      const filtered = articles.filter(article => 
-        article.title.toLowerCase().includes(query.toLowerCase()) ||
-        article.excerpt.toLowerCase().includes(query.toLowerCase()) ||
-        article.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase())) ||
-        article.category.toLowerCase().includes(query.toLowerCase())
-      )
-      
-      setResults(filtered.slice(0, 8)) // Limit to 8 results
-      setIsLoading(false)
+
+    const searchTimeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/articles?q=${encodeURIComponent(query)}`)
+        const data = await res.json()
+        setResults(data.slice(0, 8))
+      } catch {
+        setResults([])
+      } finally {
+        setIsLoading(false)
+      }
     }, 300)
 
     return () => clearTimeout(searchTimeout)
@@ -190,7 +186,7 @@ const SearchModal = ({ isOpen, onClose }) => {
                     {results.map((article) => (
                       <Link
                         key={article.id}
-                        to={`/artigo/${article.slug}`}
+                        href={`/artigo/${article.slug}`}
                         onClick={onClose}
                         className="block p-4 hover:bg-white/5 rounded-xl transition-all duration-200 border border-transparent hover:border-white/10 group"
                       >

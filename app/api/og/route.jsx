@@ -1,8 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { getArticleBySlug } from '@/data/articles'
 
-export const runtime = 'edge'
-
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const slug = searchParams.get('slug')
@@ -14,7 +12,7 @@ export async function GET(request) {
   let tags = []
 
   if (slug) {
-    const article = getArticleBySlug(slug)
+    const article = await getArticleBySlug(slug)
     if (article) {
       title = article.title
       subtitle = article.excerpt

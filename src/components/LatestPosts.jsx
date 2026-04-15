@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/button'
 import { Calendar, User, Clock, ArrowRight, TrendingUp } from 'lucide-react'
 import { getLatestArticles } from '../data/articles'
 
-const LatestPosts = () => {
-  const posts = getLatestArticles(6)
+const LatestPosts = async () => {
+  const posts = await getLatestArticles(6)
 
   const getCategoryColor = (category) => {
     const colors = {
