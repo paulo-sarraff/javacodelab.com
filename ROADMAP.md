@@ -6,10 +6,10 @@ Plano de melhorias gerado em 2026-04-13. Marque `[x]` ao concluir cada etapa.
 
 ## Iniciativa 1 — Infraestrutura de Conteúdo
 
-### 1.1 — Migrar artigos para banco de dados
-- [ ] Adicionar modelo `Article` no `prisma/schema.prisma` (slug, title, excerpt, content, category, tags[], publishedAt, readTime, views, published, featured, authorId)
-- [ ] Criar script `prisma/seed.js` para importar os 8 artigos existentes
-- [ ] Substituir `src/data/articles.js` por funções que consultam o banco via Prisma
+### 1.1 — Migrar artigos para banco de dados ✅ 2026-04-15
+- [x] Adicionar modelo `Article` no `prisma/schema.prisma` (branch: feat/1.1-article-model)
+- [x] Criar script `prisma/seed.js` para importar os 8 artigos existentes (branch: feat/1.1-article-seed)
+- [x] Substituir `src/data/articles.js` por funções que consultam o banco via Prisma (branch: feat/1.1-article-data-layer)
 
 ### 1.2 — Sistema de renderização de conteúdo rico
 - [ ] Instalar e configurar `next-mdx-remote` ou `@mdx-js/react`
