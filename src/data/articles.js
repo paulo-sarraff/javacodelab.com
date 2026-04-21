@@ -1,4 +1,4 @@
-import prisma from '@/lib/prisma'
+import { prisma } from '@/lib/prisma'
 
 // Categorias estáticas — não precisam do banco
 export const categories = [

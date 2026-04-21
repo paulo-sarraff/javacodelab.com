@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { Code2, Github, Linkedin, Twitter, Mail, Heart, ArrowUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -89,7 +91,7 @@ const Footer = () => {
               {categories.map((category) => (
                 <li key={category}>
                   <Link
-                    to={`/categoria/${category.toLowerCase().replace(/\s+/g, '-').replace(/&/g, '')}`}
+                    href={`/categoria/${category.toLowerCase().replace(/\s+/g, '-').replace(/&/g, '')}`}
                     className="text-[#E8E8E8]/70 hover:text-[#FFD15A] font-roboto transition-colors duration-200 block"
                   >
                     {category}
@@ -108,7 +110,7 @@ const Footer = () => {
     {/* Seção "Sobre" */}
     <li>
       <Link
-        to="/sobre"
+        href="/sobre"
         className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
       >
         Sobre Nós
@@ -116,7 +118,7 @@ const Footer = () => {
     </li>
     <li>
       <Link
-        to="/contato"
+        href="/contato"
         className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
       >
         Contato
@@ -126,7 +128,7 @@ const Footer = () => {
     {/* Seção "Legal" */}
     <li>
       <Link
-        to="/termos-uso"
+        href="/termos-uso"
         className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
       >
         Termos de Uso
@@ -134,7 +136,7 @@ const Footer = () => {
     </li>
     <li>
       <Link
-        to="/politica-privacidade"
+        href="/politica-privacidade"
         className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
       >
         Política de Privacidade
