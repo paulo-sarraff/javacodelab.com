@@ -1,0 +1,661 @@
+## Microserviços com Spring Boot — guia completo 2025
+
+Microserviços viraram quase um sinônimo de "arquitetura moderna", mas a realidade é que muitos times adotam essa abordagem na hora errada, pagando um preço alto em complexidade operacional sem colher os benefícios esperados. Neste guia vamos construir uma arquitetura de microserviços real com Spring Boot e Spring Cloud, entender quando essa escolha faz sentido — e quando não faz — e colocar a mão na massa com código de produção.
+
+---
+
+## 1. Quando usar microserviços (e quando NÃO usar)
+
+Antes de qualquer linha de código, vale a pena ser honesto sobre o custo real dos microserviços. Você passa a lidar com latência de rede entre serviços, consistência eventual de dados, rastreamento distribuído, múltiplos pipelines de deploy e orquestração de containers. Isso tem valor — mas apenas quando o problema exige.
+
+### O caso do monolito bem-estruturado
+
+Martin Fowler chama de **"Majestic Monolith"** a ideia de que um monólito bem modularizado é a escolha certa para a maioria dos projetos na fase inicial. Com bons packages, separação de domínio e interfaces bem definidas, você consegue evoluir o sistema sem o overhead de um ambiente distribuído.
+
+**Migre para microserviços quando:**
+- Times diferentes precisam fazer deploy independente de partes distintas do sistema
+- Um domínio específico tem requisitos de escala muito diferentes dos demais (ex: processamento de vídeo vs. autenticação)
+- A base de código está tão grande que o tempo de build/compilação prejudica a produtividade
+- Você precisa de stack tecnológica diferente para partes do sistema
+
+**Não migre quando:**
+- O time tem menos de 10-15 engenheiros
+- O produto ainda está em fase de descoberta (pivot frequente)
+- A infraestrutura de observabilidade não está madura
+- Não há cultura de DevOps estabelecida
+
+<Callout type="warning" title="O erro mais comum">
+Times adotam microserviços tentando resolver um problema de organização de código ou de conflitos de merge. A solução correta nesses casos é melhorar a modularização do monólito, não distribuir o sistema. Microserviços trazem complexidade de rede, e você não consegue "desfazer" essa decisão facilmente.
+</Callout>
+
+---
+
+## 2. Estrutura do projeto
+
+Para o nosso exemplo, vamos construir um sistema fictício de e-commerce com três serviços: `order-service`, `product-service` e `notification-service`, além de infraestrutura compartilhada.
+
+### Organização multi-módulo com Maven
+
+```xml title="pom.xml (root)"
+<project>
+  <groupId>com.javacodelab</groupId>
+  <artifactId>ecommerce-microservices</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <modules>
+    <module>infra/eureka-server</module>
+    <module>infra/api-gateway</module>
+    <module>infra/config-server</module>
+    <module>services/order-service</module>
+    <module>services/product-service</module>
+    <module>services/notification-service</module>
+    <module>shared/common-lib</module>
+  </modules>
+
+  <properties>
+    <java.version>21</java.version>
+    <spring-boot.version>3.3.2</spring-boot.version>
+    <spring-cloud.version>2023.0.3</spring-cloud.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>
+```
+
+### Biblioteca compartilhada
+
+O módulo `common-lib` centraliza DTOs e classes de exceção usadas por múltiplos serviços, evitando duplicação:
+
+```java title="OrderCreatedEvent.java"
+package com.javacodelab.common.events;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.UUID;
+
+public record OrderCreatedEvent(
+    UUID orderId,
+    UUID customerId,
+    BigDecimal totalAmount,
+    Instant occurredAt
+) {}
+```
+
+<Callout type="tip" title="Cuidado com o acoplamento da lib compartilhada">
+A common-lib deve conter apenas DTOs de integração e utilitários genéricos. Nunca coloque lógica de negócio ou entidades JPA nela — isso cria acoplamento forte entre serviços e derrota o propósito do isolamento.
+</Callout>
+
+---
+
+## 3. Spring Cloud essentials
+
+### Eureka Server — service discovery
+
+O Eureka permite que os serviços se registrem e descubram uns aos outros dinamicamente, sem URLs hard-coded.
+
+<Step number={1} title="Adicione a dependência ao pom.xml do eureka-server">
+```xml title="pom.xml"
+<dependency>
+  <groupId>org.springframework.cloud</groupId>
+  <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+</dependency>
+```
+</Step>
+
+<Step number={2} title="Habilite o servidor na classe principal">
+```java title="EurekaServerApplication.java"
+@SpringBootApplication
+@EnableEurekaServer
+public class EurekaServerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(EurekaServerApplication.class, args);
+    }
+}
+```
+</Step>
+
+<Step number={3} title="Configure o application.yml">
+```yaml title="application.yml"
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    wait-time-in-ms-when-sync-empty: 0
+```
+</Step>
+
+Cada serviço de negócio precisa da dependência cliente e de uma linha de configuração para apontar ao servidor:
+
+```yaml title="application.yml (order-service)"
+spring:
+  application:
+    name: order-service
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+```
+
+### Spring Cloud Gateway — API gateway
+
+O Gateway é o ponto de entrada único. Ele roteia requisições, aplica rate limiting, valida tokens JWT e centraliza CORS.
+
+```yaml title="application.yml (api-gateway)"
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - StripPrefix=1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.requestedTokens: 1
+
+        - id: product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/api/products/**
+          filters:
+            - StripPrefix=1
+
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+```
+
+O prefixo `lb://` instrui o Gateway a usar load balancing via Eureka, resolvendo o nome do serviço dinamicamente.
+
+### Config Server — configuração externalizada
+
+O Config Server centraliza configurações de todos os serviços em um repositório Git:
+
+```yaml title="application.yml (config-server)"
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/seu-org/ecommerce-config
+          default-label: main
+          search-paths: '{application}'
+          clone-on-start: true
+```
+
+<Callout type="info" title="Ordem de bootstrap">
+Em produção, os serviços devem aguardar o Config Server estar disponível antes de inicializar. Use `spring.config.import=configserver:http://config-server:8888` e configure retry com `spring.cloud.config.retry.*` para lidar com inicialização fora de ordem.
+</Callout>
+
+---
+
+## 4. Comunicação entre serviços
+
+### OpenFeign — cliente declarativo
+
+O OpenFeign é a forma mais elegante de chamar outros serviços via REST. Você declara uma interface e o Spring cuida do resto:
+
+```java title="ProductClient.java"
+@FeignClient(
+    name = "product-service",
+    fallbackFactory = ProductClientFallbackFactory.class
+)
+public interface ProductClient {
+
+    @GetMapping("/products/{id}")
+    ProductResponse findById(@PathVariable UUID id);
+
+    @PostMapping("/products/reserve")
+    ReservationResponse reserveStock(@RequestBody StockReservationRequest request);
+}
+```
+
+```java title="ProductClientFallbackFactory.java"
+@Component
+public class ProductClientFallbackFactory implements FallbackFactory<ProductClient> {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductClientFallbackFactory.class);
+
+    @Override
+    public ProductClient create(Throwable cause) {
+        log.error("Fallback ativado para ProductClient: {}", cause.getMessage());
+        return new ProductClient() {
+            @Override
+            public ProductResponse findById(UUID id) {
+                return ProductResponse.unavailable(id);
+            }
+
+            @Override
+            public ReservationResponse reserveStock(StockReservationRequest request) {
+                throw new ServiceUnavailableException("product-service indisponível");
+            }
+        };
+    }
+}
+```
+
+Habilite o Feign na aplicação:
+
+```java title="OrderServiceApplication.java"
+@SpringBootApplication
+@EnableFeignClients
+public class OrderServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderServiceApplication.class, args);
+    }
+}
+```
+
+### Comunicação assíncrona com RabbitMQ
+
+Para operações que não precisam de resposta imediata — como enviar notificação de pedido confirmado — use mensageria:
+
+```java title="OrderEventPublisher.java"
+@Component
+@RequiredArgsConstructor
+public class OrderEventPublisher {
+
+    private final RabbitTemplate rabbitTemplate;
+
+    public void publishOrderCreated(OrderCreatedEvent event) {
+        rabbitTemplate.convertAndSend(
+            "orders.exchange",
+            "orders.created",
+            event
+        );
+    }
+}
+```
+
+```java title="NotificationConsumer.java"
+@Component
+@RequiredArgsConstructor
+public class NotificationConsumer {
+
+    private final EmailService emailService;
+
+    @RabbitListener(queues = "orders.created.notification")
+    public void handleOrderCreated(OrderCreatedEvent event) {
+        emailService.sendOrderConfirmation(event.customerId(), event.orderId());
+    }
+}
+```
+
+**Sync vs Async — regra geral:** use chamadas síncronas (REST/Feign) quando precisa da resposta para continuar o fluxo (ex: verificar estoque antes de criar pedido). Use mensageria quando a operação pode ser eventual e o serviço chamador não precisa esperar (ex: notificação, auditoria, atualização de cache).
+
+---
+
+## 5. Resiliência com Resilience4j
+
+Sistemas distribuídos falham. O Resilience4j implementa padrões de resiliência que evitam falhas em cascata.
+
+```xml title="pom.xml"
+<dependency>
+  <groupId>io.github.resilience4j</groupId>
+  <artifactId>resilience4j-spring-boot3</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-aop</artifactId>
+</dependency>
+```
+
+### Circuit Breaker na prática
+
+```java title="OrderService.java"
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+
+    private final ProductClient productClient;
+    private final OrderRepository orderRepository;
+
+    @CircuitBreaker(name = "productService", fallbackMethod = "createOrderFallback")
+    @Retry(name = "productService")
+    @TimeLimiter(name = "productService")
+    public CompletableFuture<OrderResponse> createOrder(CreateOrderRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            var product = productClient.findById(request.productId());
+            var reservation = productClient.reserveStock(
+                new StockReservationRequest(request.productId(), request.quantity())
+            );
+
+            var order = Order.builder()
+                .customerId(request.customerId())
+                .productId(product.id())
+                .quantity(request.quantity())
+                .totalAmount(product.price().multiply(BigDecimal.valueOf(request.quantity())))
+                .status(OrderStatus.CONFIRMED)
+                .build();
+
+            return OrderResponse.from(orderRepository.save(order));
+        });
+    }
+
+    public CompletableFuture<OrderResponse> createOrderFallback(
+            CreateOrderRequest request, Throwable t) {
+        log.warn("Circuit breaker ativado para order {}: {}", request.productId(), t.getMessage());
+        return CompletableFuture.completedFuture(
+            OrderResponse.pending(request.customerId(), "Serviço temporariamente indisponível")
+        );
+    }
+}
+```
+
+Configure os parâmetros no `application.yml`:
+
+```yaml title="application.yml"
+resilience4j:
+  circuitbreaker:
+    instances:
+      productService:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        register-health-indicator: true
+
+  retry:
+    instances:
+      productService:
+        max-attempts: 3
+        wait-duration: 500ms
+        retry-exceptions:
+          - feign.FeignException.ServiceUnavailable
+          - java.net.ConnectException
+
+  timelimiter:
+    instances:
+      productService:
+        timeout-duration: 3s
+
+  ratelimiter:
+    instances:
+      productService:
+        limit-for-period: 50
+        limit-refresh-period: 1s
+        timeout-duration: 500ms
+```
+
+<Callout type="danger" title="Ordem das anotações importa">
+Ao combinar `@CircuitBreaker`, `@Retry` e `@TimeLimiter` no mesmo método, a ordem de execução é: TimeLimiter envolve Retry, que envolve CircuitBreaker. Uma exceção de timeout vai ser contabilizada como falha pelo Circuit Breaker. Entenda essa interação antes de calibrar os thresholds.
+</Callout>
+
+---
+
+## 6. Rastreamento distribuído
+
+Com múltiplos serviços, entender o fluxo de uma requisição é desafiador. O Micrometer Tracing propaga automaticamente um `traceId` entre todos os serviços envolvidos em uma operação.
+
+```xml title="pom.xml"
+<dependency>
+  <groupId>io.micrometer</groupId>
+  <artifactId>micrometer-tracing-bridge-brave</artifactId>
+</dependency>
+<dependency>
+  <groupId>io.zipkin.reporter2</groupId>
+  <artifactId>zipkin-reporter-brave</artifactId>
+</dependency>
+```
+
+```yaml title="application.yml"
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId},%X{spanId}]"
+```
+
+Com essa configuração, cada linha de log incluirá automaticamente o `traceId`. No Zipkin você consegue visualizar o trace completo de uma requisição percorrendo gateway → order-service → product-service, com tempo gasto em cada hop.
+
+<Callout type="tip" title="Correlação em mensageria">
+O Micrometer propaga o `traceId` via headers HTTP automaticamente. Para mensageria (RabbitMQ/Kafka), adicione `spring-rabbit-tracing` ou `spring-kafka-tracing` para que o contexto de trace também seja propagado nas mensagens.
+</Callout>
+
+Para ambientes de produção, considere substituir o Zipkin por **Grafana Tempo** (integrado ao Loki para logs e Prometheus para métricas), mantendo toda a stack de observabilidade no mesmo ecossistema Grafana.
+
+---
+
+## 7. Containerização e deploy
+
+### Dockerfile multi-stage
+
+```dockerfile title="Dockerfile"
+# Stage 1: Build
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /app
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN ./mvnw dependency:go-offline -q
+COPY src ./src
+RUN ./mvnw package -DskipTests -q
+
+# Stage 2: Runtime
+FROM eclipse-temurin:21-jre-alpine AS runtime
+WORKDIR /app
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+COPY --from=builder /app/target/*.jar app.jar
+
+EXPOSE 8080
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]
+```
+
+A flag `-XX:+UseContainerSupport` faz o JVM respeitar os limites de memória do container, evitando que a JVM tente alocar heap acima do limite configurado no Kubernetes.
+
+### Docker Compose para desenvolvimento local
+
+```yaml title="docker-compose.yml"
+services:
+  zipkin:
+    image: openzipkin/zipkin:3
+    ports:
+      - "9411:9411"
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  eureka-server:
+    build: ./infra/eureka-server
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build: ./infra/api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_REDIS_HOST: redis
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+
+  order-service:
+    build: ./services/order-service
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_RABBITMQ_HOST: rabbitmq
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  product-service:
+    build: ./services/product-service
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+```
+
+### Kubernetes — deployment e service
+
+Para produção, o Kubernetes substitui o Eureka pelo seu próprio DNS interno. Cada pod é acessível via nome do Service:
+
+```yaml title="order-service-deployment.yaml"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  labels:
+    app: order-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+        - name: order-service
+          image: seu-registry/order-service:1.0.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "kubernetes"
+            - name: SPRING_RABBITMQ_HOST
+              value: "rabbitmq-service"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+spec:
+  selector:
+    app: order-service
+  ports:
+    - port: 80
+      targetPort: 8080
+```
+
+<Callout type="info" title="Eureka vs Kubernetes Service Discovery">
+No Kubernetes, o DNS interno já resolve `order-service` para o IP correto via `ClusterIP`. Você pode desabilitar o Eureka com `eureka.client.enabled=false` no profile `kubernetes` e usar o nome do Service diretamente nas configurações do Feign ou do Gateway. Isso elimina um componente de infraestrutura inteiro.
+</Callout>
+
+---
+
+## Recapitulando
+
+Construir microserviços com Spring Boot e Spring Cloud é viável e produtivo, mas exige disciplina arquitetural. Os pilares fundamentais são:
+
+- **Service Discovery** (Eureka ou Kubernetes DNS) para localização dinâmica
+- **API Gateway** como ponto de entrada único com roteamento e rate limiting
+- **Config Server** para configuração externalizada e auditável
+- **Feign + Resilience4j** para comunicação síncrona resiliente
+- **Mensageria** (RabbitMQ/Kafka) para operações assíncronas e desacoplamento
+- **Micrometer Tracing** para observabilidade em ambiente distribuído
+- **Docker + Kubernetes** para containerização e orquestração
+
+Comece pelo monólito bem estruturado, extraia serviços apenas quando os limites de domínio estiverem bem definidos e a equipe tiver maturidade operacional. Microserviços são uma solução para problemas de escala — organizacional e técnica — não um ponto de partida.
+
+---
+
+<QuizQuestion
+  question="Qual das afirmações abaixo descreve CORRETAMENTE quando NÃO usar microserviços?"
+  options={"[\"Quando o time precisa de deploy independente para domínios distintos\",\"Quando diferentes partes do sistema têm requisitos de escala muito diferentes\",\"Quando o produto ainda está em fase de descoberta com pivot frequente e o time é pequeno\",\"Quando a base de código cresce ao ponto de dificultar o onboarding de novos devs\"]"}
+  answer={2}
+  explanation="Microserviços têm custo operacional alto (rastreamento distribuído, múltiplos deploys, consistência eventual). Em produtos em fase de descoberta com times pequenos, esse overhead prejudica a velocidade. O momento certo é quando os bounded contexts estão bem definidos, o time tem maturidade em DevOps e a escala organizacional justifica a independência de deploy."
+/>

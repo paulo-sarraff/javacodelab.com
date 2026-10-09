@@ -1,0 +1,681 @@
+## Por que testar? A mentalidade certa
+
+Testes automatizados são frequentemente tratados como um fardo burocrático — algo que a equipe faz quando sobra tempo (que nunca sobra). Essa visão custa caro. Um conjunto sólido de testes unitários é, na prática, a documentação mais confiável que um codebase pode ter: ela nunca fica desatualizada porque o compilador e o runner de testes a verificam a cada build.
+
+Pense em cada teste como um contrato: "dado esse estado inicial e essa ação, espero esse resultado". Quando um novo desenvolvedor entra no projeto e lê `should_returnDiscount_when_customerIsPremium()`, ele entende as regras de negócio sem precisar depurar o sistema em produção.
+
+### TDD vs Test-After: a visão pragmática
+
+O debate entre Test-Driven Development e escrever testes depois é real, mas não precisa ser dogmático. TDD é uma técnica de design — escrever o teste primeiro força você a pensar na interface pública antes da implementação. Isso gera código mais coeso e testável por natureza. Test-after ainda produz valor, especialmente em refactoring de código legado.
+
+A regra prática: use TDD para lógica de negócio nova e complexa. Use test-after quando estiver explorando uma API desconhecida ou integrando uma biblioteca. O importante é que o teste existe antes do merge.
+
+### A pirâmide de testes
+
+A pirâmide de testes define a proporção ideal entre os tipos de teste:
+
+- **Unitários (base larga):** testam uma unidade isolada, sem I/O real, executam em milissegundos. Devem ser a maioria — 70% ou mais.
+- **Integração (meio):** testam a colaboração entre componentes, geralmente envolvem banco de dados ou contexto Spring. Lentos, mas necessários — uns 20%.
+- **E2E (topo estreito):** simulam o usuário real, extremamente custosos de manter — 10% ou menos.
+
+Investir pesado em testes E2E e negligenciar unitários é anti-padrão clássico. O resultado é um suite lento, frágil e que quebra por motivos não relacionados ao código que você mudou.
+
+### ROI dos testes em projetos Java
+
+Um estudo da IBM mostra que corrigir um bug em produção custa até 15x mais do que corrigi-lo durante o desenvolvimento. Testes unitários reduzem o tempo de debug, aumentam a confiança em refactorings, viabilizam CI/CD e reduzem o medo de mexer em código existente. O custo de escrevê-los é real, mas o retorno aparece rapidamente — especialmente em sistemas de longa vida.
+
+---
+
+## Setup do JUnit 5 com Maven e Gradle
+
+O ecossistema moderno de testes Java gira em torno de três bibliotecas: **JUnit 5** (runner e assertions base), **Mockito** (mocking) e **AssertJ** (assertions fluentes). Vamos configurar as três.
+
+### Dependências Maven
+
+```xml title="pom.xml"
+<dependencies>
+    <!-- JUnit 5 (Jupiter) -->
+    <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>5.10.2</version>
+        <scope>test</scope>
+    </dependency>
+
+    <!-- Mockito -->
+    <dependency>
+        <groupId>org.mockito</groupId>
+        <artifactId>mockito-core</artifactId>
+        <version>5.11.0</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.mockito</groupId>
+        <artifactId>mockito-junit-jupiter</artifactId>
+        <version>5.11.0</version>
+        <scope>test</scope>
+    </dependency>
+
+    <!-- AssertJ -->
+    <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>3.25.3</version>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+
+<!-- Maven Surefire — necessário para rodar JUnit 5 no mvn test -->
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>3.2.5</version>
+        </plugin>
+    </plugins>
+</build>
+```
+
+Se você usa Spring Boot, o `spring-boot-starter-test` já inclui JUnit 5, Mockito e AssertJ — nenhuma declaração manual necessária.
+
+### Dependências Gradle
+
+```groovy title="build.gradle"
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'org.mockito:mockito-core:5.11.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.11.0'
+    testImplementation 'org.assertj:assertj-core:3.25.3'
+}
+
+test {
+    useJUnitPlatform()
+}
+```
+
+### Estrutura básica de um teste
+
+```java title="CalculadoraDescontoTest.java"
+import org.junit.jupiter.api.*;
+import static org.assertj.core.api.Assertions.*;
+
+class CalculadoraDescontoTest {
+
+    private CalculadoraDesconto calculadora;
+
+    @BeforeAll
+    static void configurarSuite() {
+        // Executado uma vez antes de todos os testes da classe
+        System.out.println("Iniciando suite de testes...");
+    }
+
+    @BeforeEach
+    void configurarCadaTeste() {
+        // Executado antes de cada @Test — reinicia o estado
+        calculadora = new CalculadoraDesconto();
+    }
+
+    @AfterEach
+    void limparCadaTeste() {
+        // Executado após cada @Test — útil para fechar recursos
+    }
+
+    @AfterAll
+    static void finalizarSuite() {
+        // Executado uma vez após todos os testes
+    }
+
+    @Test
+    void should_returnZeroDiscount_when_customerIsRegular() {
+        double desconto = calculadora.calcular(100.0, TipoCliente.REGULAR);
+        assertThat(desconto).isEqualTo(0.0);
+    }
+
+    @Test
+    @DisplayName("Cliente premium recebe 15% de desconto")
+    void should_returnFifteenPercent_when_customerIsPremium() {
+        double desconto = calculadora.calcular(200.0, TipoCliente.PREMIUM);
+        assertThat(desconto).isEqualTo(30.0);
+    }
+
+    @Test
+    @Disabled("Aguardando implementação do cliente VIP")
+    void should_returnTwentyPercent_when_customerIsVip() {
+        // TODO
+    }
+}
+```
+
+<Info title="Executando os testes">
+  No Maven: `mvn test`. No Gradle: `./gradlew test`. Na IDE (IntelliJ/Eclipse), clique direito na classe ou método e selecione "Run Test". O relatório HTML fica em `target/surefire-reports/`.
+</Info>
+
+---
+
+## Assertions com AssertJ — melhor que o JUnit nativo
+
+As assertions nativas do JUnit (`assertEquals`, `assertTrue`) são funcionais, mas produzem mensagens de erro pobres e não são fluentes. O AssertJ resolve ambos os problemas com uma API encadeada e legível.
+
+```java title="AssertJExemplos.java"
+import static org.assertj.core.api.Assertions.*;
+import java.util.List;
+
+class AssertJExemplosTest {
+
+    @Test
+    void exemplos_de_assertions_basicas() {
+        // Strings
+        String nome = "JavaCodeLab";
+        assertThat(nome)
+            .isNotNull()
+            .startsWith("Java")
+            .endsWith("Lab")
+            .hasSize(11)
+            .containsIgnoringCase("code");
+
+        // Números
+        double preco = 49.99;
+        assertThat(preco)
+            .isGreaterThan(0)
+            .isLessThan(100)
+            .isCloseTo(50.0, within(0.1));
+
+        // Booleanos
+        assertThat(nome.isEmpty()).isFalse();
+    }
+
+    @Test
+    void exemplos_de_assertions_em_colecoes() {
+        List<String> linguagens = List.of("Java", "Kotlin", "Scala");
+
+        assertThat(linguagens)
+            .hasSize(3)
+            .contains("Java", "Kotlin")
+            .doesNotContain("Python")
+            .containsExactly("Java", "Kotlin", "Scala")  // ordem importa
+            .allMatch(l -> l.length() > 2);
+    }
+
+    @Test
+    void exemplos_de_assertions_em_excecoes() {
+        CalculadoraDesconto calc = new CalculadoraDesconto();
+
+        assertThatThrownBy(() -> calc.calcular(-10.0, TipoCliente.PREMIUM))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Valor não pode ser negativo")
+            .hasNoCause();
+
+        // Alternativa mais expressiva
+        assertThatIllegalArgumentException()
+            .isThrownBy(() -> calc.calcular(-10.0, TipoCliente.PREMIUM))
+            .withMessage("Valor não pode ser negativo");
+    }
+
+    @Test
+    void exemplos_de_soft_assertions() {
+        // Soft assertions — executa TODAS as verificações antes de falhar
+        // Ideal quando você quer ver todos os problemas de uma vez
+        Usuario usuario = buscarUsuario(1L);
+
+        assertSoftly(softly -> {
+            softly.assertThat(usuario.getNome()).isEqualTo("João Silva");
+            softly.assertThat(usuario.getEmail()).isEqualTo("joao@example.com");
+            softly.assertThat(usuario.getAtivo()).isTrue();
+            softly.assertThat(usuario.getPerfil()).isEqualTo(Perfil.ADMIN);
+        });
+        // Com assertions normais, a primeira falha interromperia o teste
+        // Com softly, você vê todas as 4 falhas de uma vez
+    }
+}
+```
+
+<Tip title="Por que AssertJ vence as assertions nativas">
+  Com JUnit nativo, `assertEquals(esperado, atual)` — quando falha, a mensagem é vaga: "expected: &lt;30.0&gt; but was: &lt;0.0&gt;". Com AssertJ, `assertThat(resultado).as("desconto para cliente premium").isEqualTo(30.0)` — a mensagem inclui o contexto que você definiu em `.as()`. Além disso, o encadeamento permite verificar múltiplas propriedades em uma única linha legível, sem repetir `assert*` a cada linha.
+</Tip>
+
+---
+
+## Mockito — isolando dependências
+
+Testes unitários testam uma classe em isolamento. Quando essa classe depende de outras (repositórios, serviços externos, clientes HTTP), precisamos substituí-las por **mocks** — objetos substitutos que simulam comportamento definido no teste.
+
+### Setup com @ExtendWith
+
+```java title="UserServiceTest.java"
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
+
+@ExtendWith(MockitoExtension.class)  // integra Mockito com JUnit 5
+class UserServiceTest {
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private EmailService emailService;
+
+    @InjectMocks                      // cria UserService injetando os @Mocks
+    private UserService userService;
+
+    // --- Testes de busca ---
+
+    @Test
+    void should_returnUser_when_userExists() {
+        // Arrange — define o comportamento do mock
+        User usuario = new User(1L, "Maria", "maria@example.com", true);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(usuario));
+
+        // Act
+        User resultado = userService.buscarPorId(1L);
+
+        // Assert
+        assertThat(resultado)
+            .isNotNull()
+            .extracting(User::getNome, User::getEmail)
+            .containsExactly("Maria", "maria@example.com");
+    }
+
+    @Test
+    void should_throwException_when_userNotFound() {
+        when(userRepository.findById(anyLong())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.buscarPorId(99L))
+            .isInstanceOf(UserNotFoundException.class)
+            .hasMessageContaining("99");
+    }
+
+    // --- Testes de criação ---
+
+    @Test
+    void should_saveAndSendEmail_when_creatingUser() {
+        // Arrange
+        UserDTO dto = new UserDTO("Carlos", "carlos@example.com");
+        User usuarioSalvo = new User(2L, "Carlos", "carlos@example.com", true);
+        when(userRepository.save(any(User.class))).thenReturn(usuarioSalvo);
+
+        // Act
+        User resultado = userService.criar(dto);
+
+        // Assert — verifica o retorno
+        assertThat(resultado.getId()).isEqualTo(2L);
+
+        // Assert — verifica que o e-mail foi enviado uma vez
+        verify(emailService, times(1)).enviarBoasVindas("carlos@example.com");
+
+        // Assert — verifica que o repositório foi chamado com o objeto correto
+        verify(userRepository).save(argThat(u ->
+            u.getNome().equals("Carlos") && u.getEmail().equals("carlos@example.com")
+        ));
+    }
+
+    @Test
+    void should_notSendEmail_when_userCreationFails() {
+        when(userRepository.save(any())).thenThrow(new RuntimeException("DB offline"));
+
+        assertThatThrownBy(() -> userService.criar(new UserDTO("Ana", "ana@example.com")))
+            .isInstanceOf(RuntimeException.class);
+
+        // Garante que e-mail NÃO foi enviado quando houve erro
+        verify(emailService, never()).enviarBoasVindas(anyString());
+    }
+
+    // --- Testes de desativação ---
+
+    @Test
+    void should_deactivateUser_when_userIsActive() {
+        User usuario = new User(3L, "Pedro", "pedro@example.com", true);
+        when(userRepository.findById(3L)).thenReturn(Optional.of(usuario));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        userService.desativar(3L);
+
+        // Captura o argumento passado ao save() para inspeção detalhada
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+
+        assertThat(captor.getValue().getAtivo()).isFalse();
+    }
+}
+```
+
+### verify() — verificando interações
+
+O `verify()` confirma que um método de mock foi (ou não foi) chamado, com quais argumentos e quantas vezes:
+
+```java title="VerifyExemplos.java"
+// Chamado exatamente uma vez (padrão)
+verify(emailService).enviarBoasVindas("user@example.com");
+
+// Chamado exatamente 2 vezes
+verify(emailService, times(2)).enviarNotificacao(any());
+
+// Nunca chamado
+verify(emailService, never()).enviarAlertaSeguranca(any());
+
+// Chamado pelo menos uma vez
+verify(userRepository, atLeastOnce()).save(any());
+
+// Sem mais interações além das verificadas
+verifyNoMoreInteractions(emailService);
+```
+
+### Spy vs Mock
+
+Um **mock** substitui completamente o objeto real — todos os métodos retornam valores padrão (`null`, `0`, `false`) a menos que você configure com `when()`. Um **spy** envolve um objeto real — os métodos reais são chamados, exceto os que você substituiu explicitamente.
+
+```java title="SpyExemplo.java"
+@Test
+void spy_chama_metodo_real_por_padrao() {
+    List<String> listaReal = new ArrayList<>();
+    List<String> listaSpy = spy(listaReal);
+
+    // Método real é chamado
+    listaSpy.add("Java");
+    assertThat(listaSpy).hasSize(1);  // passa — add() real foi executado
+
+    // Só sobrescreve o que for necessário
+    doReturn(99).when(listaSpy).size();
+    assertThat(listaSpy.size()).isEqualTo(99);
+}
+```
+
+<Warning title="Cuidado com over-mocking">
+  Mockar tudo que se move é um anti-padrão. Quando um teste configura dezenas de `when().thenReturn()` para cobrir os internos de uma classe, ele está testando **implementação**, não **comportamento**. Qualquer refactoring interno — mesmo sem mudar o contrato público — quebra todos esses testes. A heurística: mock apenas o que cruza fronteiras de sistema (banco de dados, HTTP, fila de mensagens, relógio do sistema). Lógica pura não precisa ser mockada.
+</Warning>
+
+---
+
+## Testes parametrizados
+
+Testar a mesma lógica com múltiplos cenários sem duplicar código é o propósito dos testes parametrizados. O JUnit 5 oferece várias formas de alimentar dados para um único método de teste.
+
+```java title="CalculadoraDescontoParametrizadoTest.java"
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.*;
+import static org.assertj.core.api.Assertions.*;
+
+class CalculadoraDescontoParametrizadoTest {
+
+    private final CalculadoraDesconto calculadora = new CalculadoraDesconto();
+
+    // @ValueSource — um único parâmetro de tipos primitivos ou String
+    @ParameterizedTest(name = "valor={0} deve ser aceito")
+    @ValueSource(doubles = {10.0, 50.0, 100.0, 999.99})
+    void should_acceptPositiveValues(double valor) {
+        assertThatCode(() -> calculadora.calcular(valor, TipoCliente.REGULAR))
+            .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest(name = "valor negativo {0} deve lançar exceção")
+    @ValueSource(doubles = {-1.0, -0.01, -100.0})
+    void should_rejectNegativeValues(double valorInvalido) {
+        assertThatThrownBy(() -> calculadora.calcular(valorInvalido, TipoCliente.REGULAR))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // @CsvSource — múltiplos parâmetros em formato CSV
+    @ParameterizedTest(name = "[{index}] {0} + tipo {1} = desconto {2}")
+    @CsvSource({
+        "100.0, REGULAR,  0.0",
+        "100.0, PREMIUM,  15.0",
+        "100.0, VIP,      25.0",
+        "200.0, PREMIUM,  30.0",
+        "500.0, VIP,      125.0"
+    })
+    void should_calculateCorrectDiscount(double valor, TipoCliente tipo, double descontoEsperado) {
+        double desconto = calculadora.calcular(valor, tipo);
+        assertThat(desconto).isEqualTo(descontoEsperado);
+    }
+
+    // @MethodSource — objetos complexos via método fábrica
+    @ParameterizedTest
+    @MethodSource("cenariosPedido")
+    void should_applyDiscountToPedido(Pedido pedido, double descontoEsperado) {
+        double desconto = calculadora.calcularParaPedido(pedido);
+        assertThat(desconto).isCloseTo(descontoEsperado, within(0.01));
+    }
+
+    static Stream<Arguments> cenariosPedido() {
+        return Stream.of(
+            Arguments.of(new Pedido(100.0, TipoCliente.REGULAR, false), 0.0),
+            Arguments.of(new Pedido(100.0, TipoCliente.PREMIUM, false), 15.0),
+            Arguments.of(new Pedido(100.0, TipoCliente.PREMIUM, true),  20.0),  // + bônus aniversário
+            Arguments.of(new Pedido(200.0, TipoCliente.VIP,     true),  60.0)
+        );
+    }
+
+    // @EnumSource — itera sobre valores de um enum
+    @ParameterizedTest
+    @EnumSource(TipoCliente.class)
+    void should_returnNonNegativeDiscount_for_allClientTypes(TipoCliente tipo) {
+        double desconto = calculadora.calcular(100.0, tipo);
+        assertThat(desconto).isGreaterThanOrEqualTo(0.0);
+    }
+}
+```
+
+---
+
+## Testes de exceções
+
+Verificar que o código lança as exceções certas — com as mensagens certas — é parte essencial do contrato da API.
+
+```java title="ExcecaoTest.java"
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class ExcecaoTest {
+
+    private final UserService userService = new UserService(/* deps */);
+
+    // Forma moderna com AssertJ — preferida
+    @Test
+    void should_throwUserNotFoundException_when_userDoesNotExist_assertj() {
+        assertThatThrownBy(() -> userService.buscarPorId(999L))
+            .isInstanceOf(UserNotFoundException.class)
+            .hasMessage("Usuário com ID 999 não encontrado")
+            .hasNoCause();
+    }
+
+    // Forma com JUnit 5 assertThrows — útil quando você precisa inspecionar a exceção
+    @Test
+    void should_throwUserNotFoundException_when_userDoesNotExist_junit5() {
+        UserNotFoundException ex = assertThrows(
+            UserNotFoundException.class,
+            () -> userService.buscarPorId(999L)
+        );
+
+        assertThat(ex.getMessage()).contains("999");
+        assertThat(ex.getUserId()).isEqualTo(999L);  // propriedade customizada
+    }
+
+    // Verificando exceção de validação com causa encadeada
+    @Test
+    void should_throwServiceException_with_cause_when_repositoryFails() {
+        assertThatThrownBy(() -> userService.criar(new UserDTO("", null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("nome")
+            .hasMessageContaining("e-mail");
+    }
+}
+```
+
+<Warning title="@Test(expected) está aposentado">
+  No JUnit 4 havia `@Test(expected = MinhaExcecao.class)`. Evite esse padrão mesmo em código legado — ele passa se a exceção for lançada em qualquer ponto do método, inclusive no Arrange. Com `assertThrows` ou `assertThatThrownBy`, a exceção precisa vir exatamente da linha que você está testando.
+</Warning>
+
+---
+
+## Boas práticas e anti-padrões
+
+### Nomenclatura: o contrato legível
+
+O nome do teste é a documentação. Adote o padrão `should_[resultado]_when_[condição]`:
+
+```java title="NomenclaturaTest.java"
+// Ruim — não diz nada sobre o que está sendo testado
+@Test
+void testDesconto() { }
+
+// Ruim — muito genérico
+@Test
+void testCalcularDesconto_premium() { }
+
+// Bom — contrato completo, legível em relatórios de CI
+@Test
+void should_returnFifteenPercentDiscount_when_customerIsPremium() { }
+
+@Test
+void should_throwException_when_orderValueIsNegative() { }
+
+@Test
+void should_sendWelcomeEmail_when_newUserIsCreated() { }
+
+@Test
+void should_notChargeTwice_when_paymentWebhookIsReceivedDuplicated() { }
+```
+
+### Estrutura Arrange-Act-Assert (AAA)
+
+Todo teste deve seguir três blocos claramente separados:
+
+```java title="AAAEstrutura.java"
+@Test
+void should_applyLoyaltyBonus_when_customerHasMoreThan12Months() {
+    // Arrange — prepara o estado
+    Cliente cliente = new Cliente("Ana", LocalDate.now().minusYears(2));
+    Pedido pedido = new Pedido(100.0);
+
+    // Act — executa a ação sob teste
+    double total = servicoPedido.calcularTotal(pedido, cliente);
+
+    // Assert — verifica o resultado
+    assertThat(total).isEqualTo(90.0); // 10% de bônus fidelidade
+}
+```
+
+### Anti-padrões comuns
+
+<Callout type="danger" title="Testes frágeis e acoplados à implementação">
+  Não teste métodos privados diretamente. Se você sente a necessidade de testar um método privado, é sinal de que aquela lógica deveria estar em uma classe separada com interface pública. Use reflection para acessar privados é um cheiro fortíssimo de design ruim.
+</Callout>
+
+**Flaky tests** são testes que às vezes passam, às vezes falham sem mudança de código. As causas mais comuns: dependência de `Thread.sleep()`, `new Date()` sem mock do relógio, ordem de execução de testes, dados compartilhados entre testes. A solução é usar `@BeforeEach` para resetar estado e injetar dependências como `Clock` em vez de chamar `Instant.now()` diretamente.
+
+**Over-mocking** (já mencionado) e **under-testing** são dois extremos ruins. Busque cobrir: o caminho feliz, casos de borda (null, lista vazia, valor zero, valor máximo) e os caminhos de erro esperados.
+
+---
+
+## Testes de integração vs unitários
+
+<Step number={1} title="@SpringBootTest — contexto completo">
+  Carrega o ApplicationContext inteiro. Use apenas quando você precisa testar a colaboração entre múltiplos beans Spring, middleware (filters, interceptors) ou configuração de segurança. É lento — evite para lógica pura de negócio.
+
+  ```java title="UserControllerIntegrationTest.java"
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  @AutoConfigureTestDatabase(replace = Replace.ANY)
+  class UserControllerIntegrationTest {
+
+      @Autowired
+      private TestRestTemplate restTemplate;
+
+      @Test
+      void should_return201_when_creatingValidUser() {
+          UserDTO dto = new UserDTO("João", "joao@example.com");
+          ResponseEntity<User> response = restTemplate.postForEntity("/api/users", dto, User.class);
+
+          assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+          assertThat(response.getBody().getId()).isNotNull();
+      }
+  }
+  ```
+</Step>
+
+<Step number={2} title="@DataJpaTest — repositórios isolados">
+  Sobe apenas o contexto JPA (sem web, sem serviços). Usa H2 em memória por padrão. Ideal para testar queries JPQL, `@Query`, e comportamento do repositório com dados reais.
+
+  ```java title="UserRepositoryTest.java"
+  @DataJpaTest
+  class UserRepositoryTest {
+
+      @Autowired
+      private UserRepository userRepository;
+
+      @Test
+      void should_findActiveUsersByEmail_when_emailExists() {
+          User user = userRepository.save(new User("Ana", "ana@example.com", true));
+
+          Optional<User> resultado = userRepository.findByEmailAndAtivoTrue("ana@example.com");
+
+          assertThat(resultado).isPresent();
+          assertThat(resultado.get().getNome()).isEqualTo("Ana");
+      }
+
+      @Test
+      void should_returnEmpty_when_userIsInactive() {
+          userRepository.save(new User("Bob", "bob@example.com", false));
+
+          Optional<User> resultado = userRepository.findByEmailAndAtivoTrue("bob@example.com");
+
+          assertThat(resultado).isEmpty();
+      }
+  }
+  ```
+</Step>
+
+<Step number={3} title="Testcontainers — banco real em containers">
+  Para testes de integração que precisam de comportamento específico do banco de dados real (PostgreSQL, MongoDB), o Testcontainers sobe um container Docker programaticamente:
+
+  ```java title="UserRepositoryContainerTest.java"
+  @DataJpaTest
+  @AutoConfigureTestDatabase(replace = Replace.NONE)
+  @Testcontainers
+  class UserRepositoryContainerTest {
+
+      @Container
+      static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+      @DynamicPropertySource
+      static void configureProperties(DynamicPropertyRegistry registry) {
+          registry.add("spring.datasource.url", postgres::getJdbcUrl);
+          registry.add("spring.datasource.username", postgres::getUsername);
+          registry.add("spring.datasource.password", postgres::getPassword);
+      }
+
+      @Autowired
+      private UserRepository userRepository;
+
+      @Test
+      void should_persistAndRetrieveUser() {
+          User saved = userRepository.save(new User("Clara", "clara@example.com", true));
+          assertThat(saved.getId()).isNotNull();
+      }
+  }
+  ```
+</Step>
+
+<Callout type="info" title="Quando usar cada abordagem">
+  Use testes unitários (JUnit + Mockito) para lógica de negócio. Use `@DataJpaTest` para queries de repositório. Use `@SpringBootTest` para testar fluxos HTTP de ponta a ponta internamente. Use Testcontainers quando o comportamento específico do banco importa (funções nativas, tipos especiais, transações complexas). Evite `@SpringBootTest` para tudo — ele torna o pipeline de CI lento desnecessariamente.
+</Callout>
+
+---
+
+## Conclusão
+
+Testes unitários bem escritos com JUnit 5, AssertJ e Mockito são um dos investimentos de maior retorno em qualquer projeto Java sério. O setup é mínimo, as ferramentas são maduras e os benefícios — confiança em refactorings, documentação viva, detecção precoce de regressões — aparecem imediatamente.
+
+O próximo passo natural é integrar a execução dos testes no pipeline de CI (GitHub Actions, Jenkins, GitLab CI) e acompanhar a cobertura com JaCoCo. Mas cobertura é consequência, não objetivo: prefira 80% de cobertura com testes que testam comportamento real a 100% com testes que só verificam getters e setters.
+
+<QuizQuestion
+  question="Qual é a diferença fundamental entre um Mock e um Spy no Mockito?"
+  options={"[\"Mock e Spy são a mesma coisa — apenas aliases diferentes na API do Mockito\",\"Mock substitui completamente o objeto real; Spy envolve o objeto real e chama os métodos reais por padrão\",\"Spy é usado apenas com interfaces; Mock funciona com classes concretas\",\"Mock é thread-safe; Spy não é seguro para uso em testes paralelos\"]"}
+  answer={1}
+  explanation="Correto! Um Mock cria um objeto substituto onde todos os métodos retornam valores padrão (null, 0, false) até serem configurados com when(). Um Spy envolve uma instância real — os métodos reais são invocados por padrão, e você só sobrescreve o que for necessário com doReturn() ou when(). Use Spy quando quiser testar apenas parte de uma classe real, mantendo o restante do comportamento original."
+/>

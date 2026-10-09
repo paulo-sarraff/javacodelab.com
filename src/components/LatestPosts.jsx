@@ -126,8 +126,9 @@ const LatestPosts = () => {
                           <span>{post.publishDate}</span>
                         </div>
                       </div>
-                      <div className="text-[#FFD15A]">
-                        {post.views} views
+                      <div className="flex items-center gap-1 text-[#E8E8E8]/50">
+                        <Clock className="w-3 h-3" />
+                        <span>{post.readTime} de leitura</span>
                       </div>
                     </div>
 

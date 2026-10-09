@@ -10,11 +10,10 @@ export const articles = [
     publishDate: "24 de Setembro, 2025",
     sortDate: "2025-09-24",
     readTime: "22 min",
-    views: "1.234",
     tags: ["Spring Boot", "JWT", "Spring Security", "Autenticação", "REST API", "Java"],
-    featuredImage: "/api/placeholder/1200/600",
+    featuredImage: "/api/og?slug=spring-boot-jwt-autenticacao-completa",
     featured: true,
-    content: "jwt-complete" // Identificador para conteúdo específico
+    content: "jwt-complete"
   },
   {
     id: 2,
@@ -26,9 +25,8 @@ export const articles = [
     publishDate: "23 de Setembro, 2025",
     sortDate: "2025-09-23",
     readTime: "18 min",
-    views: "2.847",
     tags: ["Spring Boot", "Microserviços", "Spring Cloud", "Arquitetura", "Docker"],
-    featuredImage: "/api/placeholder/1200/600",
+    featuredImage: "/api/og?slug=microservicos-spring-boot-guia-completo",
     featured: true,
     content: "microservices"
   },
@@ -42,9 +40,8 @@ export const articles = [
     publishDate: "20 de Setembro, 2025",
     sortDate: "2025-09-20",
     readTime: "15 min",
-    views: "1.856",
     tags: ["JUnit 5", "Testes Unitários", "Mockito", "Java", "TDD"],
-    featuredImage: "/api/placeholder/1200/600",
+    featuredImage: "/api/og?slug=testes-unitarios-java-junit5-pratica",
     featured: true,
     content: "junit5"
   },
@@ -58,27 +55,25 @@ export const articles = [
     publishDate: "18 de Setembro, 2025",
     sortDate: "2025-09-18",
     readTime: "12 min",
-    views: "3.421",
     tags: ["Entrevistas", "Carreira", "Java Sênior", "Dicas", "Algoritmos"],
-    featuredImage: "/api/placeholder/1200/600",
+    featuredImage: "/api/og?slug=preparar-entrevistas-java-senior",
     featured: true,
     content: "interview-prep"
   },
   {
     id: 5,
-    title: "Java 21: Novidades que Todo Dev Precisa Conhecer",
-    slug: "java-21-novidades-desenvolvedores",
-    excerpt: "Explore as principais novidades do Java 21 LTS: Virtual Threads, Pattern Matching, Record Patterns, String Templates e muito mais.",
+    title: "Java 25: Novidades que Todo Dev Precisa Conhecer",
+    slug: "java-25-novidades-desenvolvedores",
+    excerpt: "Explore as principais novidades do Java 25 LTS: Virtual Threads estáveis, Pattern Matching aprimorado, String Templates, Structured Concurrency e muito mais.",
     category: "Java Avançado",
     author: "Paulo Sarraff",
-    publishDate: "15 de Setembro, 2025",
-    sortDate: "2025-09-15",
-    readTime: "16 min",
-    views: "2.156",
-    tags: ["Java 21", "Virtual Threads", "Pattern Matching", "LTS", "Performance"],
-    featuredImage: "/api/placeholder/1200/600",
+    publishDate: "4 de Junho, 2026",
+    sortDate: "2026-06-04",
+    readTime: "18 min",
+    tags: ["Java 25", "Virtual Threads", "Pattern Matching", "LTS", "Structured Concurrency", "String Templates"],
+    featuredImage: "/api/og?slug=java-25-novidades-desenvolvedores",
     featured: true,
-    content: "java21"
+    content: "java25"
   },
   {
     id: 6,
@@ -90,9 +85,8 @@ export const articles = [
     publishDate: "12 de Setembro, 2025",
     sortDate: "2025-09-12",
     readTime: "20 min",
-    views: "1.789",
     tags: ["Docker", "Containerização", "Deploy", "DevOps", "Kubernetes"],
-    featuredImage: "/api/placeholder/1200/600",
+    featuredImage: "/api/og?slug=docker-desenvolvedores-java-deploy",
     featured: false,
     content: "docker"
   },
@@ -106,9 +100,8 @@ export const articles = [
     publishDate: "10 de Setembro, 2025",
     sortDate: "2025-09-10",
     readTime: "14 min",
-    views: "1.543",
     tags: ["Spring Data JPA", "Performance", "Hibernate", "SQL", "Otimização"],
-    featuredImage: "/api/placeholder/1200/600",
+    featuredImage: "/api/og?slug=spring-data-jpa-otimizacoes-performance",
     featured: false,
     content: "jpa-performance"
   },
@@ -116,15 +109,14 @@ export const articles = [
     id: 8,
     title: "Clean Code em Java: Princípios e Práticas",
     slug: "clean-code-java-principios-praticas",
-    excerpt: "Aprenda a escrever código Java limpo, legível e maintível seguindo os princípios do Clean Code e SOLID.",
+    excerpt: "Aprenda a escrever código Java limpo, legível e mantível seguindo os princípios do Clean Code e SOLID.",
     category: "Java para Iniciantes",
     author: "Paulo Sarraff",
     publishDate: "8 de Setembro, 2025",
     sortDate: "2025-09-08",
     readTime: "11 min",
-    views: "2.234",
     tags: ["Clean Code", "SOLID", "Refatoração", "Boas Práticas", "Java"],
-    featuredImage: "/api/placeholder/1200/600",
+    featuredImage: "/api/og?slug=clean-code-java-principios-praticas",
     featured: false,
     content: "clean-code"
   }
@@ -157,23 +149,22 @@ export const getLatestArticles = (limit = 6) => {
 
 export const getRelatedArticles = (currentArticleId, category, limit = 3) => {
   return articles
-    .filter(article => 
-      article.id !== currentArticleId && 
+    .filter(article =>
+      article.id !== currentArticleId &&
       article.category === category
     )
     .slice(0, limit)
 }
 
+// Ordenado por data de publicação (sem contagem de views no lado cliente)
 export const getPopularArticles = (limit = 4) => {
-  return [...articles]
-    .sort((a, b) => parseInt(b.views.replace(/\D/g, '')) - parseInt(a.views.replace(/\D/g, '')))
-    .slice(0, limit)
+  return getLatestArticles(limit)
 }
 
 // Categorias disponíveis
 export const categories = [
   "Spring Framework",
-  "Java para Iniciantes", 
+  "Java para Iniciantes",
   "Java Avançado",
   "Testes & Qualidade",
   "Carreiras",
@@ -183,7 +174,7 @@ export const categories = [
 // Função para buscar artigos
 export const searchArticles = (query) => {
   const lowercaseQuery = query.toLowerCase()
-  return articles.filter(article => 
+  return articles.filter(article =>
     article.title.toLowerCase().includes(lowercaseQuery) ||
     article.excerpt.toLowerCase().includes(lowercaseQuery) ||
     article.tags.some(tag => tag.toLowerCase().includes(lowercaseQuery))

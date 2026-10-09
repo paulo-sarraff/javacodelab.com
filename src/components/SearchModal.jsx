@@ -190,7 +190,7 @@ const SearchModal = ({ isOpen, onClose }) => {
                     {results.map((article) => (
                       <Link
                         key={article.id}
-                        to={`/artigo/${article.slug}`}
+                        href={`/artigo/${article.slug}`}
                         onClick={onClose}
                         className="block p-4 hover:bg-white/5 rounded-xl transition-all duration-200 border border-transparent hover:border-white/10 group"
                       >

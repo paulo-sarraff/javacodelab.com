@@ -1,0 +1,560 @@
+## Por que Docker mudou o desenvolvimento Java?
+
+Se você já ouviu a frase "na minha máquina funciona", sabe exatamente por que o Docker existe. Durante décadas, o ecossistema Java sofreu com o problema clássico de ambientes inconsistentes: a aplicação rodava perfeita no notebook do desenvolvedor, falhava no servidor de homologação e explodia em produção por conta de versões diferentes de JDK, variáveis de ambiente faltando ou bibliotecas nativas incompatíveis.
+
+O Docker resolve isso encapsulando a aplicação e **todo o seu ambiente de execução** em uma unidade portátil chamada container. Não importa se o servidor roda Ubuntu 22.04 ou Amazon Linux 2 — seu container sempre terá exatamente o mesmo sistema operacional base, a mesma JRE e as mesmas configurações que você testou localmente.
+
+### Dev/Prod parity
+
+O princípio de paridade entre ambientes (dev/prod parity) é um dos pilares do manifesto 12-factor app. Com Docker, você para de simular o ambiente de produção e começa a executar literalmente o mesmo artefato — a mesma imagem — em todos os estágios do pipeline. O contêiner que roda no `docker run` local é idêntico ao que será orquestrado pelo Kubernetes em produção.
+
+### JVM em containers: mito vs realidade
+
+A JVM foi projetada muito antes dos containers existirem, e por padrão ela lê os limites de memória e CPU **do host físico**, não do cgroup do container. Isso gerou um fenômeno frustrante: você configura um container com 512 MB de RAM, a JVM detecta 64 GB do servidor e abre threads e heap imensos, derrubando o container com OOMKiller.
+
+<Callout type="warning" title="Armadilha Clássica: JVM e Limites de Container">
+  Versões do Java anteriores ao Java 10 ignoram os limites de memória e CPU definidos pelo Docker. A partir do Java 11, a JVM reconhece automaticamente os cgroups v2 e ajusta o heap proporcionalmente. Sempre use Java 11+ em containers e configure `-XX:MaxRAMPercentage` em vez de `-Xmx` fixo para que o heap se adapte dinamicamente ao limite do container.
+</Callout>
+
+A partir do Java 11 (com melhorias notáveis no Java 17 e 21), a JVM passou a respeitar os limites de cgroup. Usando `-XX:MaxRAMPercentage=75.0`, o heap será automaticamente 75% da memória disponível para o container — seja 512 MB ou 4 GB — sem alterar o Dockerfile.
+
+---
+
+## Conceitos fundamentais
+
+Antes de escrever o primeiro Dockerfile, é importante dominar a terminologia básica do ecossistema Docker.
+
+### Image, container e registry
+
+- **Image**: um template imutável e em camadas que define o sistema de arquivos e os metadados de execução da aplicação. Pense nela como uma "classe" em Java.
+- **Container**: uma instância em execução de uma imagem. É a "instância" daquela classe, com seu próprio processo, sistema de arquivos temporário e interfaces de rede. Containers são efêmeros por natureza.
+- **Registry**: repositório de imagens. O mais conhecido é o **Docker Hub** (`hub.docker.com`). Alternativas populares são o **GitHub Container Registry (GHCR)** para projetos open source e o **Amazon ECR** para workloads na AWS.
+
+### Camadas e cache
+
+Toda imagem Docker é construída em camadas (layers). Cada instrução no Dockerfile (`FROM`, `RUN`, `COPY`) gera uma nova camada que é armazenada em cache. Se uma camada não mudar entre builds, o Docker a reutiliza sem recalcular — o que torna o build muito mais rápido.
+
+O impacto prático: **sempre coloque as instruções que mudam com mais frequência no final do Dockerfile**. O código-fonte da sua aplicação muda a cada commit; as dependências Maven mudam com muito menos frequência. Se você copiar o `pom.xml` e baixar as dependências antes de copiar o código-fonte, o cache de dependências será reutilizado em 95% dos builds.
+
+### Comandos essenciais
+
+| Comando | O que faz |
+|---|---|
+| `docker pull <image>` | Baixa uma imagem do registry |
+| `docker build -t app:1.0 .` | Constrói uma imagem a partir do Dockerfile |
+| `docker run -p 8080:8080 app:1.0` | Cria e inicia um container |
+| `docker ps` | Lista containers em execução |
+| `docker logs -f <container>` | Exibe os logs em tempo real |
+| `docker exec -it <container> bash` | Abre um shell interativo no container |
+| `docker stop <container>` | Para um container graciosamente |
+| `docker rm <container>` | Remove um container parado |
+| `docker images` | Lista imagens locais |
+| `docker system prune -af` | Remove imagens, containers e volumes não utilizados |
+
+---
+
+## Seu primeiro Dockerfile Java (e por que a maioria está errado)
+
+### O Dockerfile ingênuo
+
+A abordagem mais comum de iniciantes é criar um Dockerfile que apenas copia o fat JAR e executa:
+
+```dockerfile title="Dockerfile (ruim — não faça isso)"
+# PROBLEMA: imagem enorme (JDK completo ~600 MB) e sem otimização de camadas
+FROM eclipse-temurin:21-jdk
+
+WORKDIR /app
+COPY target/minha-aplicacao-1.0.jar app.jar
+
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+Este Dockerfile tem dois problemas graves: usa o JDK completo (que inclui compilador, ferramentas de diagnóstico e headers desnecessários em produção) e embute todas as dependências em uma única camada opaca que é refeita integralmente a cada mudança no código.
+
+### O Dockerfile correto: multi-stage build
+
+A solução é usar um **multi-stage build**: o primeiro estágio compila a aplicação usando o Maven; o segundo estágio copia apenas o artefato compilado para uma imagem mínima de runtime.
+
+```dockerfile title="Dockerfile (correto — multi-stage)"
+# ─── Estágio 1: Build ─────────────────────────────────────────────────────────
+FROM eclipse-temurin:21-jdk-alpine AS build
+
+WORKDIR /build
+
+# Copia primeiro o pom.xml para aproveitar o cache de dependências
+COPY pom.xml .
+COPY .mvn/ .mvn/
+COPY mvnw .
+
+# Baixa dependências (camada cacheada enquanto o pom.xml não mudar)
+RUN ./mvnw dependency:go-offline -q
+
+# Agora copia o código-fonte e compila
+COPY src/ src/
+RUN ./mvnw package -DskipTests -q
+
+# ─── Estágio 2: Runtime ───────────────────────────────────────────────────────
+FROM eclipse-temurin:21-jre-alpine AS runtime
+
+# Usuário não-root por segurança
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+WORKDIR /app
+
+COPY --from=build /build/target/*.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+UseContainerSupport", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]
+```
+
+### Escolhendo a imagem base certa
+
+| Imagem Base | Tamanho Aprox. (JRE 21) | Quando Usar |
+|---|---|---|
+| `eclipse-temurin:21-jre` | ~280 MB | Uso geral, boa compatibilidade |
+| `eclipse-temurin:21-jre-alpine` | ~150 MB | Reduzir tamanho sem abrir mão do shell |
+| `amazoncorretto:21-alpine` | ~170 MB | Workloads na AWS (suporte Amazon) |
+| `gcr.io/distroless/java21` | ~85 MB | Produção com máxima segurança (sem shell) |
+
+<Callout type="tip" title="Distroless para Produção">
+  A imagem `distroless` da Google contém apenas o runtime Java e nenhuma shell ou utilitário Unix. Isso reduz drasticamente a superfície de ataque. A desvantagem é que você não consegue executar `docker exec bash` para depuração — planeje isso antecipadamente usando imagens de debug ou logs estruturados.
+</Callout>
+
+---
+
+## Otimizações para Spring Boot
+
+### Spring Boot layered JAR
+
+Desde o Spring Boot 2.3, o fat JAR pode ser estruturado em camadas lógicas que mapeiam diretamente para camadas Docker. O arquivo `BOOT-INF/layers.idx` define a ordem:
+
+1. `dependencies` — dependências de versão estável
+2. `spring-boot-loader` — o próprio loader do Spring Boot
+3. `snapshot-dependencies` — dependências com versão SNAPSHOT
+4. `application` — classes e recursos da aplicação
+
+Essa separação permite que a camada de dependências (a maior) seja cacheada enquanto apenas a camada `application` (a menor) precise ser reconstruída a cada commit.
+
+```dockerfile title="Dockerfile (Spring Boot Layered JAR)"
+# ─── Estágio 1: Extrator de Camadas ───────────────────────────────────────────
+FROM eclipse-temurin:21-jre-alpine AS builder
+
+WORKDIR /builder
+COPY target/*.jar application.jar
+
+# Extrai as camadas do fat JAR
+RUN java -Djarmode=layertools -jar application.jar extract --destination extracted
+
+# ─── Estágio 2: Runtime com Camadas Separadas ─────────────────────────────────
+FROM eclipse-temurin:21-jre-alpine AS runtime
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+WORKDIR /app
+
+# Cada COPY gera uma camada Docker separada — a ordem importa!
+# As camadas menos voláteis primeiro para maximizar o cache
+COPY --from=builder /builder/extracted/dependencies/ ./
+COPY --from=builder /builder/extracted/spring-boot-loader/ ./
+COPY --from=builder /builder/extracted/snapshot-dependencies/ ./
+COPY --from=builder /builder/extracted/application/ ./
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+UseContainerSupport", \
+  "org.springframework.boot.loader.launch.JarLauncher"]
+```
+
+### Alternativa: Cloud Native Buildpacks
+
+Se você quer zero configuração de Dockerfile, o Spring Boot integra diretamente com Buildpacks via plugin Maven. O comando abaixo gera uma imagem OCI sem necessitar de Dockerfile:
+
+```bash title="terminal"
+# Gera a imagem usando Buildpacks (requer Docker em execução)
+./mvnw spring-boot:build-image \
+  -Dspring-boot.build-image.imageName=minha-app:latest \
+  -Dspring-boot.build-image.env.BP_JVM_VERSION=21
+```
+
+O Buildpacks usa automaticamente o Bellsoft Liberica JRE, aplica boas práticas de camadas e configura a JVM para ambiente containerizado. É ideal para times que querem padronização sem manter Dockerfiles.
+
+---
+
+## Docker Compose para desenvolvimento local
+
+O Docker Compose orquestra múltiplos containers localmente com um único arquivo YAML. Para uma aplicação Spring Boot típica com banco de dados e cache, o `docker-compose.yml` completo ficaria assim:
+
+```yaml title="docker-compose.yml"
+version: "3.9"
+
+services:
+  # ─── Aplicação Spring Boot ─────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: minha-app:local
+    container_name: minha-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/appdb
+      SPRING_DATASOURCE_USERNAME: appuser
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ─── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # ─── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - app-network
+
+volumes:
+  postgres-data:
+
+networks:
+  app-network:
+    driver: bridge
+```
+
+```bash title=".env"
+# Nunca commite este arquivo — adicione ao .gitignore!
+DB_PASSWORD=dev_password_local_only
+```
+
+<Callout type="info" title="depends_on com healthcheck">
+  O `depends_on` padrão apenas aguarda o container iniciar, não o serviço dentro dele estar pronto. Usar `condition: service_healthy` garante que a aplicação Spring Boot só suba após o PostgreSQL estar genuinamente aceitando conexões — evitando erros de "Connection refused" nas primeiras tentativas de startup.
+</Callout>
+
+Para subir o ambiente completo:
+
+```bash title="terminal"
+# Sobe todos os serviços em background
+docker compose up -d
+
+# Acompanha os logs da aplicação
+docker compose logs -f app
+
+# Para tudo e remove os containers (mantém os volumes)
+docker compose down
+
+# Para tudo e remove volumes também (cuidado: apaga os dados!)
+docker compose down -v
+```
+
+---
+
+## Variáveis de ambiente e secrets
+
+### Nunca bake secrets em imagens
+
+Um erro gravíssimo — e infelizmente comum — é embutir senhas, chaves de API e tokens diretamente no Dockerfile ou no código-fonte que vai para a imagem. Qualquer pessoa com acesso à imagem pode extrair esses segredos com `docker inspect` ou `docker history`.
+
+A regra de ouro: **a imagem deve ser agnóstica ao ambiente**. Senhas, URLs de banco de dados e chaves de API são fornecidos em tempo de execução via variáveis de ambiente ou sistemas de gerenciamento de secrets.
+
+### Spring profiles e variáveis de ambiente
+
+O Spring Boot tem integração nativa com variáveis de ambiente. A convenção de relaxed binding transforma `SPRING_DATASOURCE_URL` automaticamente em `spring.datasource.url`. Isso significa que basta exportar a variável de ambiente no container e o Spring Boot a reconhece sem nenhuma configuração adicional:
+
+```bash title="terminal"
+docker run \
+  -e SPRING_PROFILES_ACTIVE=production \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://prod-host:5432/proddb \
+  -e SPRING_DATASOURCE_PASSWORD=supersecreta \
+  -p 8080:8080 \
+  minha-app:1.0.0
+```
+
+### Docker Secrets (para Swarm/Kubernetes)
+
+Para ambientes de produção, use sistemas dedicados de gerenciamento de secrets como **Docker Secrets** (Docker Swarm), **Kubernetes Secrets**, **AWS Secrets Manager** ou **HashiCorp Vault**. Nunca passe valores sensíveis via variáveis de ambiente em pipelines CI/CD sem mascaramento adequado.
+
+<Callout type="danger" title="Segredo no Histórico da Imagem">
+  Se você usar `RUN export DB_PASSWORD=senha123` em qualquer instrução do Dockerfile, esse valor ficará registrado permanentemente no histórico da imagem — acessível com `docker history --no-trunc`. Use exclusivamente variáveis de ambiente injetadas no `docker run` ou no Compose, nunca no Dockerfile.
+</Callout>
+
+---
+
+## Deploy em produção
+
+### Publicando no registry
+
+O fluxo padrão para deploy é: build local → tag com versão semântica → push para registry → pull no servidor.
+
+```bash title="terminal"
+# Login no registry (uma vez por sessão)
+docker login ghcr.io -u SEU_USUARIO
+
+# Build com tag de versão
+docker build -t ghcr.io/seu-usuario/minha-app:1.2.0 .
+
+# Tag adicional como latest
+docker tag ghcr.io/seu-usuario/minha-app:1.2.0 \
+           ghcr.io/seu-usuario/minha-app:latest
+
+# Push para o registry
+docker push ghcr.io/seu-usuario/minha-app:1.2.0
+docker push ghcr.io/seu-usuario/minha-app:latest
+```
+
+### Kubernetes: Deployment, Service e ConfigMap
+
+Em produção, a maioria das aplicações Java roda no Kubernetes. Os três recursos fundamentais são o `Deployment` (define como a aplicação roda), o `Service` (expõe internamente ou externamente) e o `ConfigMap` (configurações não-sensíveis).
+
+```yaml title="k8s/configmap.yaml"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minha-app-config
+  namespace: production
+data:
+  SPRING_PROFILES_ACTIVE: "production"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-svc:5432/proddb"
+  SERVER_PORT: "8080"
+```
+
+```yaml title="k8s/deployment.yaml"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minha-app
+  namespace: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: minha-app
+  template:
+    metadata:
+      labels:
+        app: minha-app
+    spec:
+      containers:
+        - name: minha-app
+          image: ghcr.io/seu-usuario/minha-app:1.2.0
+          ports:
+            - containerPort: 8080
+
+          # Limites de recursos — sempre defina para evitar "noisy neighbors"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+
+          # Configurações via ConfigMap
+          envFrom:
+            - configMapRef:
+                name: minha-app-config
+
+          # Secrets injetados individualmente
+          env:
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minha-app-secrets
+                  key: db-password
+
+          # Liveness probe: reinicia o container se travar
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+
+          # Readiness probe: remove do balanceador se não estiver pronto
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+
+  # Rolling update: garante zero downtime
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+```
+
+```yaml title="k8s/service.yaml"
+apiVersion: v1
+kind: Service
+metadata:
+  name: minha-app-svc
+  namespace: production
+spec:
+  selector:
+    app: minha-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+```
+
+<Callout type="info" title="Configurando o Spring Boot Actuator para Probes">
+  Para que os probes de liveness e readiness funcionem, adicione as dependências do Actuator e habilite os endpoints no `application.properties`:
+
+  ```properties
+  management.endpoints.web.exposure.include=health,info,metrics
+  management.endpoint.health.probes.enabled=true
+  management.health.livenessstate.enabled=true
+  management.health.readinessstate.enabled=true
+  ```
+</Callout>
+
+<Step number={1} title="Prepare a imagem e faça o push para o registry">
+  Execute o build e o push conforme o fluxo de tag mostrado acima. Certifique-se de que o cluster Kubernetes tem as credenciais de pull (`imagePullSecrets`) configuradas para o registry privado.
+</Step>
+
+<Step number={2} title="Aplique os recursos Kubernetes">
+  Com o `kubectl` configurado para o cluster de destino, aplique os manifestos em ordem:
+
+  ```bash title="terminal"
+  kubectl apply -f k8s/configmap.yaml
+  kubectl apply -f k8s/deployment.yaml
+  kubectl apply -f k8s/service.yaml
+  ```
+</Step>
+
+<Step number={3} title="Monitore o rollout">
+  Acompanhe o progresso do deploy e verifique se os pods subiram corretamente:
+
+  ```bash title="terminal"
+  # Acompanha o rollout em tempo real
+  kubectl rollout status deployment/minha-app -n production
+
+  # Verifica os pods
+  kubectl get pods -n production -l app=minha-app
+
+  # Inspeciona logs de um pod específico
+  kubectl logs -f deployment/minha-app -n production
+  ```
+</Step>
+
+---
+
+## Comandos essenciais do dia a dia
+
+### Inspeção e diagnóstico
+
+```bash title="terminal"
+# Ver logs em tempo real com timestamp
+docker logs -f --timestamps minha-app
+
+# Abrir shell no container em execução
+docker exec -it minha-app bash
+
+# Ver métricas de CPU, memória e rede em tempo real
+docker stats minha-app
+
+# Inspecionar metadados do container (IPs, variáveis, volumes)
+docker inspect minha-app
+
+# Ver histórico de camadas de uma imagem
+docker history minha-app:1.0
+
+# Ver tamanho de cada camada
+docker image inspect minha-app:1.0 --format='{{json .RootFS.Layers}}'
+```
+
+### Limpeza do ambiente
+
+```bash title="terminal"
+# Remove containers parados, imagens sem tag, redes e build cache
+docker system prune -f
+
+# Remove TUDO incluindo imagens utilizadas (use com cautela!)
+docker system prune -af
+
+# Remove apenas volumes não utilizados
+docker volume prune -f
+
+# Verifica quanto espaço o Docker está consumindo
+docker system df
+```
+
+<Callout type="tip" title="Limpeza Regular no CI/CD">
+  Em ambientes de CI (GitHub Actions, GitLab CI, Jenkins), o disco do agente acumula imagens Docker rapidamente. Adicione `docker system prune -af` ao final de cada pipeline para manter o agente saudável. O build cache relevante é armazenado no registry, não localmente.
+</Callout>
+
+### Referência rápida — fluxo completo
+
+```bash title="terminal"
+# Desenvolvimento local — sobe o stack completo
+docker compose up -d
+
+# Build e teste isolado
+docker build -t minha-app:dev . && \
+  docker run --rm -p 8080:8080 minha-app:dev
+
+# Inspecionar o fat JAR e as camadas
+java -Djarmode=layertools -jar target/*.jar list
+
+# Deploy para produção
+docker build -t ghcr.io/usuario/minha-app:$(git rev-parse --short HEAD) . && \
+  docker push ghcr.io/usuario/minha-app:$(git rev-parse --short HEAD)
+```
+
+---
+
+<QuizQuestion
+  question="Qual é a principal vantagem de usar multi-stage builds em Dockerfiles para aplicações Java?"
+  options={"[\"Permite compilar o código em linguagens diferentes dentro do mesmo arquivo\",\"Reduz o tamanho da imagem final ao separar o ambiente de build (JDK + Maven) do ambiente de runtime (JRE), sem incluir ferramentas de compilação na imagem que vai para produção\",\"Aumenta a velocidade de execução da JVM em produção\",\"Elimina a necessidade de configurar variáveis de ambiente\"]"}
+  correctIndex={1}
+  explanation="O multi-stage build usa um primeiro estágio com JDK e Maven para compilar o código, e um segundo estágio com apenas a JRE mínima para executar o artefato compilado. O resultado é uma imagem de produção que pode ser 4x menor que a alternativa ingênua com JDK completo — sem ferramentas de compilação, sem código-fonte e sem dependências de build expostas na imagem final."
+/>

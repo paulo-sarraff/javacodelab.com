@@ -1,0 +1,471 @@
+## Como se preparar para entrevistas Java sênior
+
+Você passou anos escrevendo código, resolvendo bugs em produção, mentorando juniores e entregando features sob pressão. Mas chegou a hora da entrevista para sênior e, de repente, aquela confiança some. Isso é normal — e esse guia existe exatamente para isso.
+
+Entrevistas para posições seniores são diferentes. Não basta saber o que o código faz; você precisa explicar *por que* ele funciona assim, quais são as alternativas e quando cada uma faz sentido. Esse artigo cobre os tópicos que realmente aparecem, com exemplos práticos e um plano de 30 dias para você chegar preparado.
+
+---
+
+## O que diferencia um dev sênior na entrevista
+
+O erro mais comum de quem busca uma posição sênior é preparar-se como se fosse uma entrevista pleno melhorada. As perguntas mudam de natureza.
+
+Um dev júnior pergunta *como* fazer. Um sênior é perguntado *por que* fez dessa forma — e o que considerou antes de decidir.
+
+Entrevistadores de grandes empresas buscam **system thinking**: a capacidade de enxergar tradeoffs, pontos de falha e comportamento sob escala. Uma pergunta aparentemente simples como "como você implementaria um cache aqui?" pode desdobrar-se em: qual a estratégia de invalidação? E se o cache e o banco ficarem inconsistentes? Qual o impacto no P99 de latência?
+
+Outro sinal forte é a pergunta **"O que você faria diferente?"**. Bons candidatos respondem com honestidade técnica — identificam acoplamento desnecessário, falta de observabilidade, testes frágeis — sem precisar de incentivo. Candidatos medianos defendem tudo que fizeram.
+
+<Callout type="tip" title="Dica de Entrevista">
+Quando apresentar uma solução, sempre mencione espontaneamente as alternativas que descartou e o motivo. Isso demonstra pensamento arquitetural sem que o entrevistador precise extrair a informação.
+</Callout>
+
+Por fim, discussões de qualidade de código vão além de "o código funciona". Espere perguntas sobre legibilidade, testabilidade, coesão e como a solução se comporta quando os requisitos mudarem em seis meses.
+
+---
+
+## Java Core — o que realmente cobram
+
+### Modelo de memória da JVM
+
+Visualize a JVM dividida em três regiões principais:
+
+- **Heap**: onde vivem os objetos criados com `new`. Dividido em Young Generation (Eden + Survivor spaces) e Old Generation.
+- **Stack**: uma por thread. Armazena frames de execução com variáveis locais e referências. Não é gerenciado pelo GC.
+- **Metaspace** (Java 8+): substitui o PermGen. Armazena metadados de classes — bytecode, métodos, constantes. Cresce no heap nativo da JVM, fora do heap Java.
+
+<Callout type="warning" title="Pegadinha Clássica">
+`OutOfMemoryError: Metaspace` é diferente de heap overflow. Acontece quando a JVM carrega muitas classes dinamicamente (frameworks como Spring com proxies CGLIB são os principais culpados em aplicações grandes). A solução é `-XX:MaxMetaspaceSize`, não aumentar o `-Xmx`.
+</Callout>
+
+### Garbage Collection: G1 vs ZGC
+
+**G1GC** (padrão desde Java 9) divide o heap em regiões de tamanho igual e prioriza regiões com mais lixo. Adequado para heaps de até ~32GB com pausas previsíveis (meta configurável com `-XX:MaxGCPauseMillis`).
+
+**ZGC** (produção desde Java 15) realiza quase todo o trabalho concorrentemente — pausas tipicamente abaixo de 1ms, independente do tamanho do heap. Ideal para sistemas que exigem latência ultra-baixa, como trading ou APIs com SLO agressivo.
+
+Quando tunar? Só depois de confirmar que o GC é o gargalo via `gc.log`. Na maioria dos sistemas, o padrão é suficiente.
+
+### Concorrência: synchronized, volatile e Lock
+
+```java title="ConcurrencyExamples.java"
+// synchronized: garante exclusão mútua e visibilidade
+public synchronized void increment() {
+    count++;
+}
+
+// volatile: garante visibilidade, NÃO atomicidade
+// count++ com volatile ainda é race condition!
+private volatile boolean running = true;
+
+// Lock: controle granular, suporte a tryLock e interrupção
+private final ReentrantLock lock = new ReentrantLock();
+
+public void safeIncrement() {
+    lock.lock();
+    try {
+        count++;
+    } finally {
+        lock.unlock();
+    }
+}
+```
+
+O conceito de **happens-before** é o que realmente aparece em entrevistas seniores. Se a ação A ocorre antes de B no modelo happens-before, qualquer escrita em A é visível para B. `synchronized`, `volatile`, `final` em construtores e operações em `java.util.concurrent` estabelecem relações happens-before.
+
+### Collections: internals que importam
+
+**HashMap**: usa array de buckets com listas encadeadas (ou árvores AVL quando o bucket tem mais de 8 elementos, desde Java 8). O `load factor` padrão de 0.75 balanceia uso de memória e colisões. Quando a ocupação supera `capacity × loadFactor`, ocorre *rehashing* — todo o array é recriado com o dobro do tamanho, operação O(n).
+
+**LinkedHashMap**: extends HashMap, mantém ordem de inserção (ou ordem de acesso com `accessOrder=true`). Ideal para implementar LRU cache.
+
+**TreeMap**: usa Red-Black Tree internamente. Operações O(log n), mas mantém chaves ordenadas. Use quando precisar de `firstKey()`, `lastKey()`, `subMap()`.
+
+### Streams: avaliação lazy e armadilhas do parallelismo
+
+Streams são lazy: operações intermediárias (`filter`, `map`, `flatMap`) só executam quando uma operação terminal (`collect`, `findFirst`, `count`) é invocada. Isso permite otimizações como short-circuit.
+
+```java title="StreamPitfalls.java"
+// Parallel streams usam ForkJoinPool.commonPool()
+// Se você tiver operações bloqueantes (I/O, DB), pode esgotar o pool
+List<String> result = items.parallelStream()
+    .filter(this::isValid)      // cuidado: this::isValid deve ser stateless
+    .map(this::transform)
+    .collect(Collectors.toList());
+
+// Para operações I/O-bound, prefira CompletableFuture com executor dedicado
+```
+
+<Callout type="warning" title="Armadilha de Parallel Streams">
+`parallelStream()` não é sempre mais rápido. Para listas pequenas o overhead de coordenação supera o ganho. E para operações com estado compartilhado, é fonte certa de bugs difíceis de reproduzir.
+</Callout>
+
+### Três perguntas clássicas com pegadinha
+
+**1. HashMap em contexto concorrente**
+
+```java title="HashMapConcurrency.java"
+// ERRADO: HashMap não é thread-safe
+// Pode causar loop infinito em rehashing (Java < 8) ou dados corrompidos
+Map<String, Integer> map = new HashMap<>();
+
+// CORRETO para alta concorrência
+Map<String, Integer> safe = new ConcurrentHashMap<>();
+
+// ConcurrentHashMap segmenta o lock (não bloqueia o mapa inteiro)
+// computeIfAbsent é atômica; get/put separados NÃO são
+safe.computeIfAbsent("key", k -> expensiveComputation(k));
+```
+
+**2. String Pool e equals/hashCode**
+
+```java title="StringPool.java"
+String a = "hello";
+String b = "hello";
+String c = new String("hello");
+
+System.out.println(a == b);      // true  — mesmo objeto no pool
+System.out.println(a == c);      // false — c está fora do pool
+System.out.println(a.equals(c)); // true  — compara conteúdo
+```
+
+**3. Contrato equals/hashCode**
+
+```java title="EqualsHashCode.java"
+// SE a.equals(b) == true, ENTÃO a.hashCode() == b.hashCode() DEVE ser verdade
+// A recíproca não precisa ser verdadeira (colisões são permitidas)
+
+// Violação clássica: sobrescrever equals sem sobrescrever hashCode
+// Resultado: objetos "iguais" vão para buckets diferentes no HashMap
+// e nunca são encontrados por get()
+public class User {
+    private String email;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof User u)) return false;
+        return Objects.equals(email, u.email);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(email); // NUNCA esqueça isso
+    }
+}
+```
+
+---
+
+## Spring Framework avançado
+
+### Como @Transactional realmente funciona
+
+Spring usa **proxies AOP** (JDK dynamic proxy ou CGLIB) para interceptar chamadas e gerenciar transações. Quando você injeta um bean com `@Transactional`, recebe um proxy, não o objeto real.
+
+**A armadilha da auto-invocação**: se um método chama outro método `@Transactional` dentro da mesma classe, a chamada passa pelo objeto real (via `this`), não pelo proxy. O `@Transactional` interno é completamente ignorado.
+
+```java title="TransactionalTrap.java"
+@Service
+public class OrderService {
+
+    // PROBLEMA: processOrder chama confirmOrder diretamente via this
+    // O @Transactional de confirmOrder é ignorado!
+    public void processOrder(Order order) {
+        // lógica...
+        this.confirmOrder(order); // NÃO passa pelo proxy
+    }
+
+    @Transactional
+    public void confirmOrder(Order order) {
+        // Esta transação nunca é aberta quando chamada internamente
+        repository.save(order);
+    }
+
+    // SOLUÇÃO 1: Mover confirmOrder para outro bean injetado
+    // SOLUÇÃO 2: Injetar ApplicationContext e buscar o próprio proxy
+    // SOLUÇÃO 3: Usar AspectJ ao invés de proxy (mais raro)
+}
+```
+
+**Propagation mais cobradas**: `REQUIRED` (padrão — usa a existente ou cria nova), `REQUIRES_NEW` (sempre nova, suspende a atual), `NESTED` (savepoint), `SUPPORTS` (usa se existir, executa sem se não).
+
+**Isolation levels**: `READ_COMMITTED` evita dirty reads mas permite non-repeatable reads. `REPEATABLE_READ` (padrão do MySQL InnoDB) previne isso mas permite phantom reads. `SERIALIZABLE` é o mais seguro e o mais lento.
+
+### Bean scopes e implicações
+
+- **Singleton** (padrão): uma instância por ApplicationContext. Deve ser stateless. Injetar um bean prototype em um singleton não funciona como esperado — o prototype é injetado uma vez e reutilizado.
+- **Prototype**: nova instância a cada injeção/getBean. Use `@Lookup` ou `ObjectProvider<T>` para obter uma instância nova dentro de um singleton.
+- **Request/Session**: apenas em contextos web. Útil para dados de usuário logado.
+
+### Spring Security: filter chain
+
+Cada requisição HTTP passa por uma cadeia de filtros antes de chegar ao controller. Os mais relevantes: `SecurityContextPersistenceFilter` (restaura o contexto de segurança), `UsernamePasswordAuthenticationFilter`, `BasicAuthenticationFilter`, `ExceptionTranslationFilter` e `FilterSecurityInterceptor`.
+
+### "O que acontece quando uma requisição chega?"
+
+Essa é a pergunta favorita de entrevistadores. A resposta completa: requisição entra no **embedded Tomcat** → passa pelo **Filter Chain do Servlet** (incluindo Spring Security) → chega ao **DispatcherServlet** → **HandlerMapping** encontra o controller correto → **HandlerAdapter** invoca o método → **MessageConverter** serializa a resposta → resposta retorna pelo mesmo caminho.
+
+<Callout type="tip" title="Dica de Entrevista">
+Mencionar `@ControllerAdvice` para tratamento centralizado de exceções e `HandlerInterceptor` para lógica cross-cutting (logging, rate limiting) demonstra conhecimento de nível sênior nessa resposta.
+</Callout>
+
+---
+
+## Design patterns que todo sênior deve dominar
+
+Os padrões que realmente aparecem em entrevistas são: **Strategy** (troca de algoritmo em runtime), **Observer** (pub/sub, base do Spring Events), **Factory/Factory Method** (desacoplar criação), **Builder** (objetos complexos imutáveis) e **Decorator** (adicionar comportamento sem herança).
+
+### Builder Pattern — exemplo completo
+
+```java title="HttpRequestBuilder.java"
+public class HttpRequest {
+    private final String url;
+    private final String method;
+    private final Map<String, String> headers;
+    private final String body;
+    private final int timeoutMs;
+
+    private HttpRequest(Builder builder) {
+        this.url = builder.url;
+        this.method = builder.method;
+        this.headers = Collections.unmodifiableMap(builder.headers);
+        this.body = builder.body;
+        this.timeoutMs = builder.timeoutMs;
+    }
+
+    public static Builder builder(String url) {
+        return new Builder(url);
+    }
+
+    public static class Builder {
+        private final String url;
+        private String method = "GET";
+        private Map<String, String> headers = new HashMap<>();
+        private String body;
+        private int timeoutMs = 5000;
+
+        private Builder(String url) {
+            this.url = Objects.requireNonNull(url, "url não pode ser nulo");
+        }
+
+        public Builder method(String method) {
+            this.method = method;
+            return this;
+        }
+
+        public Builder header(String key, String value) {
+            this.headers.put(key, value);
+            return this;
+        }
+
+        public Builder body(String body) {
+            this.body = body;
+            return this;
+        }
+
+        public Builder timeoutMs(int timeoutMs) {
+            this.timeoutMs = timeoutMs;
+            return this;
+        }
+
+        public HttpRequest build() {
+            if ("POST".equals(method) && body == null) {
+                throw new IllegalStateException("POST requer body");
+            }
+            return new HttpRequest(this);
+        }
+    }
+}
+
+// Uso fluente
+HttpRequest request = HttpRequest.builder("https://api.example.com/users")
+    .method("POST")
+    .header("Authorization", "Bearer " + token)
+    .header("Content-Type", "application/json")
+    .body(payload)
+    .timeoutMs(3000)
+    .build();
+```
+
+### Anti-patterns para conhecer
+
+- **God Class**: uma classe que faz tudo. Viola SRP e torna testes impossíveis. Sinal: mais de ~300 linhas com responsabilidades misturadas.
+- **Spaghetti Code**: lógica de negócio espalhada em controllers, entities e scripts SQL. Sem camada de domínio.
+- **Premature Optimization**: otimizar antes de medir. "Premature optimization is the root of all evil" — Knuth. Em entrevistas, sempre mencione que otimizaria baseado em profiling e métricas reais.
+
+---
+
+## System Design para devs Java
+
+### Como estruturar sua resposta
+
+<Step number={1} title="Levantamento de Requisitos">
+Antes de desenhar qualquer coisa, faça perguntas: Quantos usuários? Qual a consistência esperada (forte ou eventual)? Existe SLA de disponibilidade? Quais operações são read-heavy vs write-heavy?
+</Step>
+
+<Step number={2} title="Estimativas de Escala">
+Calcule rapidamente: 1M usuários × 10 req/dia = ~115 req/s. Isso é tráfego modesto — um único servidor aguenta. 100M usuários com picos de 10× já exige sharding, CDN e múltiplos data centers.
+</Step>
+
+<Step number={3} title="Componentes e Arquitetura">
+Desenhe os blocos: clientes → load balancer → servidores de aplicação → cache (Redis) → banco primário. Adicione message queue (Kafka/RabbitMQ) para operações assíncronas. CDN para assets estáticos.
+</Step>
+
+<Step number={4} title="Tradeoffs Explícitos">
+Explique suas escolhas: "Escolhi SQL por consistência nas transações financeiras, mas sacrifico a flexibilidade de schema do NoSQL". Entrevistadores avaliam seu raciocínio, não apenas a resposta certa.
+</Step>
+
+### Design: URL shortener
+
+Componentes: gerador de ID curto (hash ou contador), Redis para cache quente de mapeamentos, banco relacional para persistência, CDN para distribuir redirects globalmente.
+
+Tradeoff crítico: **Base62 vs hash**. Base62 com contador garante IDs únicos e curtos mas expõe sequencialidade. Hash MD5/SHA truncado pode colidir. A solução: contador centralizado (ou distribuído com Snowflake ID) encodado em Base62.
+
+### Design: sistema de notificações
+
+Arquitetura assíncrona obrigatória: serviço de negócio publica evento no Kafka → consumidores específicos por canal (email, push, SMS) processam independentemente → retry automático em caso de falha → dead letter queue para falhas persistentes.
+
+<Callout type="tip" title="Dica de System Design">
+Sempre discuta o que acontece quando um componente falha. "O que acontece se o Kafka ficar indisponível? Como garantimos que nenhuma notificação se perde?" Essa pergunta separa candidatos seniores dos demais.
+</Callout>
+
+---
+
+## Coding challenges — estratégia
+
+### O que o entrevistador realmente avalia
+
+Não é apenas a solução correta. É: você articulou o problema antes de codificar? Considerou edge cases (lista vazia, números negativos, overflow)? Você analisou a complexidade de tempo e espaço? Seu código é legível?
+
+**Pense em voz alta**. Silêncio é o pior sinal. "Estou pensando em usar um HashMap para lookup O(1) porque..." mostra raciocínio mesmo que a solução ainda não esteja completa.
+
+### Tipos de algoritmos mais cobrados
+
+- **Two Pointers**: arrays ordenados, palindromes, soma de pares
+- **Sliding Window**: subarray/substring com condição
+- **BFS/DFS**: grafos, árvores, grid problems
+- **DP Básico**: fibonacci, knapsack, longest subsequence
+
+### Two Sum — o clássico
+
+```java title="TwoSum.java"
+// Dado um array de inteiros e um target, retornar índices de dois números
+// cuja soma é igual ao target. Cada input tem exatamente uma solução.
+
+public int[] twoSum(int[] nums, int target) {
+    // HashMap para lookup O(1): valor → índice
+    Map<Integer, Integer> seen = new HashMap<>();
+
+    for (int i = 0; i < nums.length; i++) {
+        int complement = target - nums[i];
+
+        if (seen.containsKey(complement)) {
+            return new int[]{seen.get(complement), i};
+        }
+
+        seen.put(nums[i], i);
+    }
+
+    throw new IllegalArgumentException("Nenhuma solução encontrada");
+}
+// Complexidade: O(n) tempo, O(n) espaço
+// Alternativa naive com dois loops seria O(n²) — mencione sempre
+```
+
+### Valid Parentheses
+
+```java title="ValidParentheses.java"
+// Dado uma string com (, ), {, }, [, ], determinar se os parênteses são válidos.
+
+public boolean isValid(String s) {
+    Deque<Character> stack = new ArrayDeque<>();
+    Map<Character, Character> pairs = Map.of(
+        ')', '(',
+        '}', '{',
+        ']', '['
+    );
+
+    for (char c : s.toCharArray()) {
+        if (!pairs.containsKey(c)) {
+            // É um abridor: empilha
+            stack.push(c);
+        } else {
+            // É um fechador: verifica se o topo corresponde
+            if (stack.isEmpty() || stack.peek() != pairs.get(c)) {
+                return false;
+            }
+            stack.pop();
+        }
+    }
+
+    return stack.isEmpty(); // stack vazia = todos fechados corretamente
+}
+// Complexidade: O(n) tempo, O(n) espaço
+// Edge cases: string vazia (retorna true), só fechadores "))" (retorna false)
+```
+
+<Callout type="tip" title="Ferramentas Java para Algoritmos">
+Prefira `ArrayDeque` a `Stack` (mais performático). Use `PriorityQueue` para problemas de "k-th largest". `StringBuilder` ao invés de concatenação em loops. `Collections.sort()` com lambda para ordenações customizadas.
+</Callout>
+
+---
+
+## Perguntas comportamentais — método STAR
+
+Entrevistas seniores dedicam 30–40% do tempo a comportamentais. A estrutura STAR (Situação, Tarefa, Ação, Resultado) é obrigatória — respostas vagas são eliminatórias.
+
+**"Fale sobre uma decisão técnica que você se arrependeu"**
+
+Não finja que não tem. Todo sênior tem. Escolha algo real, explique o contexto (pressão de prazo, informação incompleta), o que faria diferente hoje e o que aprendeu. Respostas honestas com aprendizado demonstram maturidade.
+
+**"Como você lida com desacordo com arquitetos seniores?"**
+
+A resposta esperada não é nem "concordo com tudo" nem "imponho minha visão". É: "apresento meus argumentos com dados e exemplos. Se a decisão for tomada diferente, implemento com profissionalismo e monitoro os resultados. Posso retomar a discussão se os dados confirmarem minha preocupação."
+
+**"Descreva um incidente de produção que você gerenciou"**
+
+Estrutura ideal: qual era o impacto (usuários afetados, SLA, receita), como você identificou a causa raiz (logs, traces, alertas), qual foi a mitigação imediata, qual foi a correção definitiva e quais melhorias foram implementadas para evitar recorrência (alertas, runbooks, testes).
+
+<Callout type="warning" title="Evite">
+Respostas que culpam o time, o legado ou a falta de tempo. Entrevistadores avaliam como você age sob restrições reais — não em condições ideais.
+</Callout>
+
+---
+
+## Plano de estudo: 30 dias para a entrevista
+
+<Step number={1} title="Semana 1 — Java Core e Collections">
+Revise JVM memory model, GC tuning básico, concorrência (synchronized, volatile, java.util.concurrent), internals de HashMap/TreeMap/LinkedHashMap. Resolva 10–15 problemas de LeetCode Easy/Medium focando em estruturas de dados. Pratique explicar o contrato equals/hashCode sem consultar anotações.
+</Step>
+
+<Step number={2} title="Semana 2 — Spring e Design Patterns">
+Aprofunde @Transactional (propagação vs isolamento), bean scopes, filter chain do Security. Implemente do zero: Builder, Strategy, Observer, Factory. Estude o código fonte de pelo menos um padrão no Spring (ex: como BeanDefinition usa Factory Method).
+</Step>
+
+<Step number={3} title="Semana 3 — System Design e Algoritmos">
+Pratique desenhar sistemas em 45 minutos: URL shortener, sistema de cache distribuído, feed de redes sociais. Resolva 15–20 problemas de LeetCode Medium com foco em two pointers, sliding window e BFS/DFS. Cronometre suas soluções — velocidade importa.
+</Step>
+
+<Step number={4} title="Semana 4 — Mock Interviews e Revisão">
+Faça pelo menos 3 mock interviews completos (use Pramp, Interviewing.io ou peça a um colega). Grave suas respostas comportamentais e assista de volta — perceber seus próprios vícios de linguagem é valioso. Revise os tópicos onde você hesitou nas semanas anteriores.
+</Step>
+
+<Callout type="info" title="Recursos Recomendados">
+Para System Design: "Designing Data-Intensive Applications" (Kleppmann) é leitura obrigatória. Para algoritmos: NeetCode.io tem roadmap estruturado por padrão. Para Java Core: a documentação oficial da JVM Specification é densa mas definitiva para dúvidas sobre comportamento de memória.
+</Callout>
+
+---
+
+## Quiz: teste seu conhecimento
+
+<QuizQuestion
+  question="O que acontece quando um método @Transactional chama outro método @Transactional na mesma classe usando this.outroMetodo()?"
+  options={"[\"Uma nova transação é criada normalmente, pois @Transactional intercepta todas as chamadas de método\",\"O @Transactional do método chamado é ignorado, pois a chamada não passa pelo proxy Spring\",\"O Spring lança uma TransactionException para evitar transações aninhadas acidentais\",\"A propagação REQUIRED garante que a transação existente seja reutilizada corretamente\"]"}
+  answer={1}
+  explanation="Spring gerencia @Transactional via proxies AOP. Quando um método chama outro via this, a chamada não passa pelo proxy — vai direto ao objeto real. O Spring nunca tem chance de interceptar e abrir/configurar a transação. Para resolver: mover o método para outro bean injetado, ou usar AspectJ com compile-time weaving."
+/>
+
+---
+
+Preparação para entrevista sênior não é sobre decorar respostas — é sobre consolidar o entendimento real do que você já construiu. Use esse plano como estrutura, mas adapte aos seus pontos cegos. Boa sorte!

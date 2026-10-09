@@ -1,0 +1,553 @@
+## Introdução ao JWT
+
+JSON Web Token (JWT) é um padrão aberto (RFC 7519) que define uma forma compacta e segura de transmitir informações entre partes como um objeto JSON. Em aplicações Spring Boot, JWT é amplamente utilizado para implementar autenticação stateless, especialmente em APIs REST.
+
+Diferentemente das sessões tradicionais que são armazenadas no servidor, o JWT contém todas as informações necessárias sobre o usuário codificadas no próprio token. Isso torna a aplicação mais escalável e adequada para arquiteturas de microserviços.
+
+Neste tutorial completo, vamos implementar um sistema robusto de autenticação JWT usando Spring Boot 3 e Spring Security 6, seguindo as melhores práticas de segurança da indústria.
+
+<Callout type="info" title="Pré-requisitos">
+  Java 17+, Spring Boot 3.x e conhecimento básico de Spring Security. O código completo está disponível no GitHub.
+</Callout>
+
+## Configuração inicial do projeto
+
+Vamos começar criando um novo projeto Spring Boot com as dependências necessárias. Você pode usar o Spring Initializr (start.spring.io) ou criar o projeto diretamente na sua IDE favorita.
+
+### Dependências necessárias
+
+Para este tutorial, utilizaremos Java 17, Spring Boot 3.1.x e Maven como gerenciador de dependências. Adicione as seguintes dependências ao seu `pom.xml`:
+
+```xml title="pom.xml"
+<dependencies>
+    <!-- Spring Boot Starters -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
+    <!-- JWT Dependencies -->
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-api</artifactId>
+        <version>0.11.5</version>
+    </dependency>
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-impl</artifactId>
+        <version>0.11.5</version>
+        <scope>runtime</scope>
+    </dependency>
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-jackson</artifactId>
+        <version>0.11.5</version>
+        <scope>runtime</scope>
+    </dependency>
+
+    <!-- Database -->
+    <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+
+    <!-- Lombok for cleaner code -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+</dependencies>
+```
+
+## Criando o JWT service
+
+O JWT Service será responsável por gerar, validar e extrair informações dos tokens JWT. Esta classe centraliza toda a lógica relacionada ao JWT, facilitando manutenção e testes.
+
+```java title="JwtService.java"
+package com.javacodelab.security.jwt;
+
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
+import java.security.Key;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+@Service
+public class JwtService {
+
+    @Value("${application.security.jwt.secret-key}")
+    private String secretKey;
+
+    @Value("${application.security.jwt.expiration}")
+    private long jwtExpiration;
+
+    @Value("${application.security.jwt.refresh-token.expiration}")
+    private long refreshExpiration;
+
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    public String generateToken(UserDetails userDetails) {
+        return generateToken(new HashMap<>(), userDetails);
+    }
+
+    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+        return buildToken(extraClaims, userDetails, jwtExpiration);
+    }
+
+    public String generateRefreshToken(UserDetails userDetails) {
+        return buildToken(new HashMap<>(), userDetails, refreshExpiration);
+    }
+
+    private String buildToken(Map<String, Object> extraClaims, UserDetails userDetails, long expiration) {
+        return Jwts.builder()
+                .setClaims(extraClaims)
+                .setSubject(userDetails.getUsername())
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean isTokenValid(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+    }
+
+    private boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    private Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    private Claims extractAllClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSignInKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    private Key getSignInKey() {
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+}
+```
+
+<Tip title="Boas Práticas">
+  Nunca hardcode a `secret-key` no código-fonte. Use variáveis de ambiente ou um cofre de segredos como HashiCorp Vault em produção.
+</Tip>
+
+## Entidade User e UserDetails
+
+Vamos criar a entidade `User` que implementa `UserDetails` do Spring Security. Isso permite integração perfeita com o framework de segurança.
+
+```java title="User.java"
+package com.javacodelab.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "_user")
+public class User implements UserDetails {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(unique = true, nullable = false)
+    private String email;
+
+    @Column(nullable = false)
+    private String password;
+
+    private String firstName;
+    private String lastName;
+
+    @Enumerated(EnumType.STRING)
+    private Role role;
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+    }
+
+    @Override
+    public String getUsername() { return email; }
+
+    @Override
+    public boolean isAccountNonExpired() { return true; }
+
+    @Override
+    public boolean isAccountNonLocked() { return true; }
+
+    @Override
+    public boolean isCredentialsNonExpired() { return true; }
+
+    @Override
+    public boolean isEnabled() { return true; }
+}
+
+enum Role { USER, ADMIN, MODERATOR }
+```
+
+## Configuração do Spring Security
+
+A configuração do Spring Security é o coração da nossa implementação. Definiremos quais endpoints são públicos, quais requerem autenticação, e como o JWT será processado em cada requisição.
+
+```java title="SecurityConfiguration.java"
+package com.javacodelab.config;
+
+import com.javacodelab.security.jwt.JwtAuthenticationFilter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+@Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor
+public class SecurityConfiguration {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final UserDetailsService userDetailsService;
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(AbstractHttpConfigurer::disable)
+            .authorizeHttpRequests(authz -> authz
+                .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**").permitAll()
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authenticationProvider(authenticationProvider())
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+}
+```
+
+### Filtro JWT personalizado
+
+O filtro JWT intercepta todas as requisições e valida o token JWT presente no header `Authorization`.
+
+```java title="JwtAuthenticationFilter.java"
+package com.javacodelab.security.jwt;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+@Component
+@RequiredArgsConstructor
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtService jwtService;
+    private final UserDetailsService userDetailsService;
+
+    @Override
+    protected void doFilterInternal(
+        @NonNull HttpServletRequest request,
+        @NonNull HttpServletResponse response,
+        @NonNull FilterChain filterChain
+    ) throws ServletException, IOException {
+
+        final String authHeader = request.getHeader("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        final String jwt = authHeader.substring(7);
+
+        try {
+            final String userEmail = jwtService.extractUsername(jwt);
+
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
+
+                if (jwtService.isTokenValid(jwt, userDetails)) {
+                    UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
+            }
+        } catch (Exception e) {
+            // Token inválido — não autentica
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
+```
+
+## Controller de autenticação
+
+O `AuthController` expõe endpoints REST para login, registro e refresh de tokens.
+
+```java title="AuthenticationController.java"
+package com.javacodelab.controller;
+
+import com.javacodelab.dto.auth.*;
+import com.javacodelab.service.AuthenticationService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/v1/auth")
+@RequiredArgsConstructor
+public class AuthenticationController {
+
+    private final AuthenticationService service;
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthenticationResponse> register(
+        @Valid @RequestBody RegisterRequest request
+    ) {
+        return ResponseEntity.ok(service.register(request));
+    }
+
+    @PostMapping("/authenticate")
+    public ResponseEntity<AuthenticationResponse> authenticate(
+        @Valid @RequestBody AuthenticationRequest request
+    ) {
+        return ResponseEntity.ok(service.authenticate(request));
+    }
+
+    @PostMapping("/refresh-token")
+    public void refreshToken(
+        jakarta.servlet.http.HttpServletRequest request,
+        jakarta.servlet.http.HttpServletResponse response
+    ) throws java.io.IOException {
+        service.refreshToken(request, response);
+    }
+}
+```
+
+### DTOs de requisição e resposta
+
+```java title="AuthenticationDTOs.java"
+// RegisterRequest
+@Data @Builder @AllArgsConstructor @NoArgsConstructor
+public class RegisterRequest {
+    @NotBlank @Size(min = 2, max = 50)
+    private String firstName;
+    @NotBlank @Size(min = 2, max = 50)
+    private String lastName;
+    @NotBlank @Email
+    private String email;
+    @NotBlank @Size(min = 8)
+    private String password;
+}
+
+// AuthenticationRequest
+@Data @Builder @AllArgsConstructor @NoArgsConstructor
+public class AuthenticationRequest {
+    @NotBlank @Email
+    private String email;
+    @NotBlank
+    private String password;
+}
+
+// AuthenticationResponse
+@Data @Builder @AllArgsConstructor @NoArgsConstructor
+public class AuthenticationResponse {
+    private String accessToken;
+    private String refreshToken;
+    private String tokenType = "Bearer";
+    private Long expiresIn;
+}
+```
+
+## Testando a implementação
+
+Após implementar todos os componentes, use os comandos abaixo para testar os endpoints:
+
+```bash title="test-commands.sh"
+# 1. Registrar novo usuário
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "firstName": "João",
+    "lastName": "Silva",
+    "email": "joao@example.com",
+    "password": "minhasenha123"
+  }'
+
+# 2. Fazer login
+curl -X POST http://localhost:8080/api/v1/auth/authenticate \
+  -H "Content-Type: application/json" \
+  -d '{"email": "joao@example.com", "password": "minhasenha123"}'
+
+# 3. Acessar endpoint protegido
+curl -X GET http://localhost:8080/api/v1/users/profile \
+  -H "Authorization: Bearer SEU_JWT_TOKEN_AQUI"
+```
+
+### Configuração do application.yml
+
+```yaml title="application.yml"
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+
+# JWT Configuration
+application:
+  security:
+    jwt:
+      secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      expiration: 86400000       # 24 horas
+      refresh-token:
+        expiration: 604800000    # 7 dias
+```
+
+<Warning title="Atenção em Produção">
+  Troque a `secret-key` acima por uma chave gerada com segurança (mínimo 256 bits). Nunca use essa chave de exemplo em produção.
+</Warning>
+
+<QuizQuestion
+  question="Qual é o principal benefício da autenticação stateless com JWT?"
+  options={"[\"O servidor armazena o estado da sessão em memória\",\"O token contém todas as informações necessárias, sem estado no servidor\",\"JWT é mais rápido que cookies HTTP\",\"JWT elimina completamente a necessidade de HTTPS\"]"}
+  answer={1}
+  explanation="Correto! Com JWT, o servidor não precisa armazenar sessões. Todas as informações do usuário ficam codificadas no token, tornando a aplicação horizontalmente escalável."
+/>
+
+## Melhorias e considerações de segurança
+
+Uma implementação JWT robusta deve considerar os seguintes aspectos:
+
+### 1. Blacklist de tokens
+
+Implemente um sistema de blacklist para tokens revogados, especialmente importante para logout e mudanças de senha. Use Redis para armazenar tokens invalidados com TTL igual à expiração do token.
+
+### 2. Rate limiting
+
+Adicione rate limiting nos endpoints de autenticação para prevenir ataques de força bruta. O Spring Boot oferece integração com Bucket4j ou Resilience4j para isso.
+
+### 3. Logs de auditoria
+
+Registre todas as tentativas de login (sucesso e falha) com IP, timestamp e user-agent para monitoramento de segurança e compliance.
+
+### 4. HTTPS obrigatório
+
+Sempre use HTTPS em produção para proteger os tokens durante a transmissão. Tokens JWT interceptados em HTTP podem ser reutilizados por atacantes.
+
+<Callout type="danger" title="Nunca faça isso">
+  Não armazene tokens JWT no `localStorage`. Prefira `httpOnly cookies` para reduzir o risco de ataques XSS.
+</Callout>
+
+## Conclusão
+
+Implementamos um sistema completo e robusto de autenticação JWT com Spring Boot e Spring Security. Esta implementação inclui:
+
+- Geração e validação segura de tokens JWT
+- Refresh tokens para renovação automática
+- Integração completa com Spring Security
+- Validação de entrada e tratamento de erros
+- Endpoints RESTful bem documentados
+
+Com esta base sólida, você pode expandir a funcionalidade adicionando recursos como recuperação de senha, verificação de email, autenticação de dois fatores e muito mais.
