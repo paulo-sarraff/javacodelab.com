@@ -1,4 +1,4 @@
-import { getAllArticles, categories } from '@/data/articles'
+import { getAllArticles } from '@/data/articles'
 
 const BASE_URL = 'https://javacodelab.com'
 

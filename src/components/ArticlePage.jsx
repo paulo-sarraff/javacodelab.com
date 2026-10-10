@@ -7,6 +7,8 @@ import rehypeSlug from 'rehype-slug'
 import rehypePrettyCode from 'rehype-pretty-code'
 import Header from './Header'
 import Footer from './Footer'
+import ShareButtons from './ShareButtons'
+import Giscus from './Giscus'
 import { Button } from '@/components/ui/button'
 import { getArticleBySlug } from '../data/articles'
 import { getMdxSource, extractHeadings } from '../lib/mdx'
@@ -151,17 +153,20 @@ const ArticlePage = async ({ slug }) => {
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {article.tags.map((tag) => (
-                    <Link
-                      key={tag}
-                      href={`/artigos?q=${encodeURIComponent(tag)}`}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-[#2A2A2B] text-[#E8E8E8]/70 rounded-full text-sm font-roboto hover:bg-[#FFD15A]/10 hover:text-[#FFD15A] transition-colors duration-200 cursor-pointer"
-                    >
-                      <Tag className="w-3 h-3" />
-                      {tag}
-                    </Link>
-                  ))}
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+                  <div className="flex flex-wrap gap-2">
+                    {article.tags.map((tag) => (
+                      <Link
+                        key={tag}
+                        href={`/artigos?q=${encodeURIComponent(tag)}`}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-[#2A2A2B] text-[#E8E8E8]/70 rounded-full text-sm font-roboto hover:bg-[#FFD15A]/10 hover:text-[#FFD15A] transition-colors duration-200 cursor-pointer"
+                      >
+                        <Tag className="w-3 h-3" />
+                        {tag}
+                      </Link>
+                    ))}
+                  </div>
+                  <ShareButtons slug={slug} title={article.title} />
                 </div>
 
                 {article.featuredImage?.startsWith('/images/') ? (
@@ -233,6 +238,9 @@ const ArticlePage = async ({ slug }) => {
                   </div>
                 </div>
               </div>
+
+              {/* Comments */}
+              <Giscus />
 
               <div className="text-center my-12">
                 <Link href="/artigos">

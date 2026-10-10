@@ -6,8 +6,6 @@ import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import CheckoutButton from '@/components/CheckoutButton'
 import {
-  products,
-  getProductsByCategory,
   getActiveProducts,
   PRODUCT_CATEGORIES,
 } from '@/data/products'

@@ -26,16 +26,16 @@
 
 - [x] Componentes MDX: Callout, Step, QuizQuestion, CodeBlock, MdxCodeFigure
 - [x] Table of Contents com heading extractor (h2/h3)
-- [ ] Estabilizar renderização e layout do ArticlePage
-- [ ] Testar todos os componentes MDX nos artigos em dev
+- [x] Estabilizar renderização e layout do ArticlePage
+- [x] Testar todos os componentes MDX nos artigos em dev
 
 ### 1.3 Navegação e UX
 
 - [x] Header: links de categoria apontam para `/artigos?categoria=...`
 - [x] Footer: bug `Link to=` corrigido para `Link href=`, rotas corrigidas
 - [x] Página `/artigos` com filtro por categoria e busca em tempo real
-- [ ] Página 404 customizada (revisar conteúdo do `not-found.jsx`)
-- [ ] Breadcrumbs nos artigos *(nice-to-have, não bloqueia launch)*
+- [x] Página 404 customizada (revisar conteúdo do `not-found.jsx`)
+- [x] Breadcrumbs nos artigos
 - [x] Busca funcional no `SearchModal` (busca em título, excerpt e tags)
 
 ### 1.4 SEO
@@ -71,17 +71,16 @@
 
 ### 2.2 Comentários
 
-- [ ] Escolher solução: **Giscus** (GitHub Discussions, gratuito, sem banco) ou comentários próprios
-  - Recomendação: Giscus para lançar rápido, migrar depois se necessário
-- [ ] Integrar comentários nos artigos
+- [x] Escolher solução: **Giscus** (GitHub Discussions, gratuito, sem banco)
+- [x] Integrar comentários nos artigos (Giscus)
 - [ ] Moderação básica (se solução própria)
 - [ ] Notificação por e-mail de respostas (se solução própria)
 
 ### 2.3 Engajamento
 
 - [ ] Sistema de reações nos artigos (👍 útil, ❤️ favorito)
-- [ ] Contagem de visualizações visível (já tem `ArticleViewTracker`, exibir o número)
-- [ ] Compartilhamento social por artigo (Twitter/X, LinkedIn)
+- [x] Contagem de visualizações visível (ArticlePage exibe viewCount)
+- [x] Compartilhamento social por artigo (Twitter/X, LinkedIn — ShareButtons)
 
 ---
 
@@ -149,11 +148,11 @@
 
 | Fase | Status | Pendências |
 |------|--------|-----------|
-| 1 — Blog Funcional | 🟢 Quase pronto | Deploy + testar MDX em dev |
-| 2 — Perfil + Comentários | ⬜ Aguardando | Depende do lançamento da Fase 1 |
+| 1 — Blog Funcional | 🟢 Quase pronto | Deploy + configurar domínio |
+| 2 — Perfil + Comentários | 🟡 Parcial | Giscus + ShareButtons + ViewCount prontos; Perfil do Leitor pendente |
 | 3 — Área Premium | ⬜ Aguardando | Stripe Live não configurado |
 | 4 — Loja | ⬜ Aguardando | `stripePriceId` vazio, catálogo sem produtos reais |
 
 ---
 
-*Atualizado em: 2026-06-04*
+*Atualizado em: 2026-10-09*

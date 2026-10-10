@@ -98,5 +98,5 @@ export function resetUser() {
   if (typeof window === 'undefined') return
   try {
     getPostHog()?.reset?.()
-  } catch (_) {}
+  } catch { /* posthog unavailable */ }
 }
