@@ -10,7 +10,6 @@ import {
   ChevronDown,
   BookOpen,
   Briefcase,
-  ShoppingBag,
   Mail,
   Info,
   Crown,
@@ -32,17 +31,14 @@ const Header = () => {
 
   const dropdownItems = [
     {
-      category: 'Conteúdo',
+      category: 'Artigos',
       items: [
-        { name: 'Spring Framework', href: '/categoria/spring-framework', icon: BookOpen },
-        { name: 'Java Avançado', href: '/categoria/java-avancado', icon: BookOpen },
-        { name: 'Testes & Qualidade', href: '/categoria/testes-qualidade', icon: BookOpen },
-        { name: 'Carreiras', href: '/categoria/carreiras', icon: Briefcase },
+        { name: 'Todos os Artigos', href: '/artigos', icon: BookOpen },
+        { name: 'Spring Framework', href: '/artigos?categoria=Spring%20Framework', icon: BookOpen },
+        { name: 'Java Avançado', href: '/artigos?categoria=Java%20Avan%C3%A7ado', icon: BookOpen },
+        { name: 'Testes & Qualidade', href: '/artigos?categoria=Testes%20%26%20Qualidade', icon: BookOpen },
+        { name: 'Carreiras', href: '/artigos?categoria=Carreiras', icon: Briefcase },
       ],
-    },
-    {
-      category: 'Loja',
-      items: [{ name: 'Produtos', href: '/loja', icon: ShoppingBag }],
     },
     {
       category: 'Sobre',

@@ -2,7 +2,7 @@ import Header from './Header'
 import HeroSection from './HeroSection'
 import FeaturedCarousel from './FeaturedCarousel'
 import LatestPosts from './LatestPosts'
-import ShopTeaser from './ShopTeaser'
+// import ShopTeaser from './ShopTeaser' // oculto até Fase 4
 import NewsletterSignup from './NewsletterSignup'
 import Footer from './Footer'
 
@@ -14,7 +14,7 @@ const HomePage = () => {
         <HeroSection />
         <FeaturedCarousel />
         <LatestPosts />
-        <ShopTeaser />
+        {/* <ShopTeaser /> — oculto até Fase 4 */}
         <NewsletterSignup />
       </main>
       <Footer />

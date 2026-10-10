@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { Code2, Github, Linkedin, Twitter, Mail, Heart, ArrowUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -7,11 +9,10 @@ const Footer = () => {
   const currentYear = new Date().getFullYear()
 
   const quickLinks = [
-    { name: 'Sobre', href: '/sobre' },
+    { name: 'Sobre Nós', href: '/sobre' },
     { name: 'Contato', href: '/contato' },
-    { name: 'Newsletter', href: '#newsletter' },
-    { name: 'Política de Privacidade', href: '/privacidade' },
-    { name: 'Termos de Uso', href: '/termos' }
+    { name: 'Termos de Uso', href: '/termos-uso' },
+    { name: 'Política de Privacidade', href: '/politica-privacidade' },
   ]
 
   const socialLinks = [
@@ -45,10 +46,10 @@ const Footer = () => {
                 </div>
               </div>
             </Link>
-            
+
             <p className="text-[#E8E8E8]/70 font-roboto mb-6 leading-relaxed">
-              Seu laboratório de desenvolvimento Java. Tutoriais práticos, 
-              dicas de carreira e as melhores práticas para desenvolvedores 
+              Seu laboratório de desenvolvimento Java. Tutoriais práticos,
+              dicas de carreira e as melhores práticas para desenvolvedores
               que querem evoluir.
             </p>
 
@@ -81,7 +82,7 @@ const Footer = () => {
               {categories.map((category) => (
                 <li key={category}>
                   <Link
-                    to={`/categoria/${category.toLowerCase().replace(/\s+/g, '-').replace(/&/g, '')}`}
+                    href={`/artigos?categoria=${encodeURIComponent(category)}`}
                     className="text-[#E8E8E8]/70 hover:text-[#FFD15A] font-roboto transition-colors duration-200 block"
                   >
                     {category}
@@ -91,50 +92,24 @@ const Footer = () => {
             </ul>
           </div>
 
-{/* Quick Links */}
-<div>
-  <h3 className="font-geist font-semibold text-[#E8E8E8] mb-6">
-    Links Rápidos
-  </h3>
-  <ul className="space-y-3">
-    {/* Seção "Sobre" */}
-    <li>
-      <Link
-        to="/sobre"
-        className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
-      >
-        Sobre Nós
-      </Link>
-    </li>
-    <li>
-      <Link
-        to="/contato"
-        className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
-      >
-        Contato
-      </Link>
-    </li>
-
-    {/* Seção "Legal" */}
-    <li>
-      <Link
-        to="/termos-uso"
-        className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
-      >
-        Termos de Uso
-      </Link>
-    </li>
-    <li>
-      <Link
-        to="/politica-privacidade"
-        className="text-[#E8E8E8]/60 hover:text-[#FFD15A] transition-colors"
-      >
-        Política de Privacidade
-      </Link>
-    </li>
-  </ul>
-</div>
-
+          {/* Quick Links */}
+          <div>
+            <h3 className="font-geist font-semibold text-[#E8E8E8] mb-6">
+              Links Rápidos
+            </h3>
+            <ul className="space-y-3">
+              {quickLinks.map((link) => (
+                <li key={link.name}>
+                  <Link
+                    href={link.href}
+                    className="text-[#E8E8E8]/70 hover:text-[#FFD15A] font-roboto transition-colors duration-200 block"
+                  >
+                    {link.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
 
           {/* Newsletter CTA */}
           <div>
@@ -144,31 +119,13 @@ const Footer = () => {
             <p className="text-[#E8E8E8]/70 font-roboto mb-4 text-sm">
               Receba nossos melhores artigos e dicas direto no seu e-mail.
             </p>
-            <Button 
-              className="w-full bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium mb-4"
-            >
-              Inscrever-se
-            </Button>
-            
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div>
-                <div className="text-lg font-geist font-bold text-[#FFD15A]">
-                  50+
-                </div>
-                <div className="text-xs text-[#E8E8E8]/60 font-roboto">
-                  Artigos
-                </div>
-              </div>
-              <div>
-                <div className="text-lg font-geist font-bold text-[#FFD15A]">
-                  12k+
-                </div>
-                <div className="text-xs text-[#E8E8E8]/60 font-roboto">
-                  Leitores
-                </div>
-              </div>
-            </div>
+            <Link href="/#newsletter">
+              <Button
+                className="w-full bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-medium"
+              >
+                Inscrever-se
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -183,9 +140,9 @@ const Footer = () => {
 
             <div className="flex items-center gap-6">
               <div className="text-xs text-[#E8E8E8]/50 font-roboto">
-                Versão 2.0.1
+                Versão 1.0.0
               </div>
-              
+
               <Button
                 variant="ghost"
                 size="sm"

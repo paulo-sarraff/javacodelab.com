@@ -1,0 +1,594 @@
+## O que é Clean Code e por que isso importa
+
+Imagine abrir um projeto que você mesmo escreveu seis meses atrás e não entender nada. Essa sensação é o sinal mais claro de que o código não estava limpo. Clean Code não é sobre fazer o programa funcionar — é sobre fazer o código **comunicar intenção** de forma tão clara que qualquer desenvolvedor (inclusive você no futuro) consiga entendê-lo em minutos, não em horas.
+
+Robert C. Martin, o "Uncle Bob", sintetizou décadas de experiência no livro *Clean Code* (2008). Os princípios lá descritos ainda são a base da qualidade em qualquer linguagem, e Java — com seu sistema de tipos robusto e ecossistema maduro — oferece ferramentas excelentes para aplicá-los.
+
+Neste artigo você vai ver **exemplos reais** de código ruim transformado em código limpo, com foco total em Java do dia a dia.
+
+<Callout type="info" title="Nível do artigo">
+  Este conteúdo é voltado para desenvolvedores Java com pelo menos 6 meses de experiência que querem elevar a qualidade do código que entregam. Conhecimento básico de orientação a objetos é necessário.
+</Callout>
+
+---
+
+## 1. Nomes que revelam intenção
+
+O primeiro e mais impactante princípio de Clean Code é simples: **escolha nomes que revelem o propósito**. Um bom nome elimina a necessidade de um comentário explicativo.
+
+### Variáveis: diga o que você está guardando
+
+```java title="NomesRuins.java"
+// Antes — o que é d? O que é list? O que significa 4?
+int d;
+List list = new ArrayList();
+if (d > 4) {
+    // ...
+}
+```
+
+```java title="NomesClaros.java"
+// Depois — intenção explícita sem nenhum comentário
+int elapsedDaysInCycle;
+List<User> activeUsers = new ArrayList<>();
+if (elapsedDaysInCycle > CYCLE_EXPIRATION_DAYS) {
+    // ...
+}
+```
+
+### Métodos: use verbos que descrevem ação
+
+```java title="MetodosRuins.java"
+// Antes — o que "process" faz exatamente?
+public void process(User u) {
+    // 80 linhas de lógica misturada...
+}
+
+// E esse? "get" o quê?
+public List get(String s) {
+    return repo.findByStatus(s);
+}
+```
+
+```java title="MetodosClaros.java"
+// Depois — nome revela intenção e contexto
+public void activateUserAndSendWelcomeEmail(User user) {
+    // ...
+}
+
+public List<Order> findOrdersByStatus(String status) {
+    return orderRepository.findByStatus(status);
+}
+```
+
+### Classes: substantivos que representam conceitos
+
+| Ruim | Bom |
+|---|---|
+| `DataManager` | `OrderRepository` |
+| `Helper` | `PriceCalculator` |
+| `Util` | `DateFormatter` |
+| `Service2` | `EmailNotificationService` |
+
+<Callout type="tip" title="Regra prática">
+  Se você precisa de um comentário para explicar o nome de uma variável ou método, o nome está errado. Renomeie até o comentário se tornar redundante.
+</Callout>
+
+---
+
+## 2. Funções pequenas com uma responsabilidade
+
+Uma função deve fazer **uma coisa, e fazê-la bem**. Se você precisa usar "e" para descrever o que ela faz, ela está fazendo coisa demais.
+
+### Antes: o método `processOrder` faz tudo
+
+```java title="OrderServiceAntes.java"
+public void processOrder(Order order) {
+    // valida o pedido
+    if (order == null) throw new IllegalArgumentException("Order cannot be null");
+    if (order.getItems().isEmpty()) throw new IllegalStateException("Order has no items");
+
+    // calcula o total
+    double total = 0;
+    for (OrderItem item : order.getItems()) {
+        total += item.getPrice() * item.getQuantity();
+    }
+    if (order.hasCoupon()) {
+        total = total * (1 - order.getCoupon().getDiscountRate());
+    }
+    order.setTotal(total);
+
+    // salva no banco
+    orderRepository.save(order);
+
+    // envia e-mail
+    String body = "Olá " + order.getCustomer().getName() + ", seu pedido #"
+        + order.getId() + " foi processado. Total: R$" + total;
+    emailService.send(order.getCustomer().getEmail(), "Pedido confirmado", body);
+
+    // atualiza estoque
+    for (OrderItem item : order.getItems()) {
+        Product product = productRepository.findById(item.getProductId()).orElseThrow();
+        product.setStock(product.getStock() - item.getQuantity());
+        productRepository.save(product);
+    }
+}
+```
+
+Esse método tem pelo menos 4 responsabilidades diferentes. Um bug no envio de e-mail pode afetar o salvamento do pedido. Testar qualquer parte isoladamente é muito difícil.
+
+### Depois: cada método faz uma coisa
+
+```java title="OrderServiceDepois.java"
+public void processOrder(Order order) {
+    validateOrder(order);
+    applyDiscounts(order);
+    orderRepository.save(order);
+    notifyCustomer(order);
+    decrementStock(order);
+}
+
+private void validateOrder(Order order) {
+    if (order == null) throw new IllegalArgumentException("Order cannot be null");
+    if (order.getItems().isEmpty()) throw new IllegalStateException("Order has no items");
+}
+
+private void applyDiscounts(Order order) {
+    double total = calculateSubtotal(order);
+    if (order.hasCoupon()) {
+        total = total * (1 - order.getCoupon().getDiscountRate());
+    }
+    order.setTotal(total);
+}
+
+private double calculateSubtotal(Order order) {
+    return order.getItems().stream()
+        .mapToDouble(item -> item.getPrice() * item.getQuantity())
+        .sum();
+}
+
+private void notifyCustomer(Order order) {
+    emailService.sendOrderConfirmation(order);
+}
+
+private void decrementStock(Order order) {
+    order.getItems().forEach(this::decrementItemStock);
+}
+
+private void decrementItemStock(OrderItem item) {
+    Product product = productRepository.findById(item.getProductId()).orElseThrow();
+    product.setStock(product.getStock() - item.getQuantity());
+    productRepository.save(product);
+}
+```
+
+Agora o método `processOrder` lê como uma história. Cada colaborador pode ser testado ou modificado de forma independente.
+
+<Callout type="warning" title="Tamanho de função">
+  Uncle Bob recomenda funções com no máximo 20 linhas. Na prática, se uma função não cabe na tela sem rolar, ela provavelmente está grande demais. Use esse desconforto como gatilho para refatorar.
+</Callout>
+
+---
+
+## 3. Princípio SOLID na prática
+
+SOLID é um acrônimo para cinco princípios de design orientado a objetos. Juntos, eles produzem sistemas mais fáceis de manter, testar e escalar.
+
+### S — Single Responsibility Principle
+
+Uma classe deve ter apenas um motivo para mudar.
+
+```java title="UserServiceRuim.java"
+// Antes — UserService faz demais
+public class UserService {
+    public User createUser(UserDTO dto) { /* ... */ }
+    public void sendWelcomeEmail(User user) { /* monta HTML, chama SMTP... */ }
+    public String generatePasswordResetToken(User user) { /* ... */ }
+    public void logAuditEvent(User user, String action) { /* grava no banco... */ }
+}
+```
+
+```java title="UserServiceBom.java"
+// Depois — cada classe tem uma responsabilidade
+public class UserService {
+    private final UserRepository userRepository;
+    private final EmailNotificationService emailService;
+    private final AuditService auditService;
+
+    public User createUser(UserDTO dto) {
+        User user = userRepository.save(User.from(dto));
+        emailService.sendWelcomeEmail(user);
+        auditService.logCreation(user);
+        return user;
+    }
+}
+
+public class EmailNotificationService {
+    public void sendWelcomeEmail(User user) { /* só isso */ }
+}
+
+public class AuditService {
+    public void logCreation(User user) { /* só isso */ }
+}
+```
+
+### O — Open/Closed Principle
+
+Aberto para extensão, fechado para modificação. Use o padrão Strategy para adicionar comportamentos sem alterar código existente.
+
+```java title="DiscountStrategy.java"
+// Interface define o contrato
+public interface DiscountStrategy {
+    double apply(double originalPrice);
+}
+
+// Implementações separadas — adicionar novos descontos não toca no código existente
+public class NoDiscount implements DiscountStrategy {
+    public double apply(double originalPrice) { return originalPrice; }
+}
+
+public class PercentageDiscount implements DiscountStrategy {
+    private final double rate;
+    public PercentageDiscount(double rate) { this.rate = rate; }
+    public double apply(double originalPrice) { return originalPrice * (1 - rate); }
+}
+
+public class BlackFridayDiscount implements DiscountStrategy {
+    public double apply(double originalPrice) { return originalPrice * 0.5; }
+}
+
+// PriceCalculator nunca precisa ser modificado para suportar novos tipos de desconto
+public class PriceCalculator {
+    public double calculate(double price, DiscountStrategy strategy) {
+        return strategy.apply(price);
+    }
+}
+```
+
+### L — Liskov Substitution Principle
+
+Subclasses devem poder substituir a classe-pai sem quebrar o comportamento esperado. O exemplo clássico é o par Rectangle/Square.
+
+```java title="LiskovViolacao.java"
+// Violação — Square quebra o contrato de Rectangle
+public class Rectangle {
+    protected int width, height;
+    public void setWidth(int w)  { this.width = w; }
+    public void setHeight(int h) { this.height = h; }
+    public int area() { return width * height; }
+}
+
+public class Square extends Rectangle {
+    @Override
+    public void setWidth(int w)  { this.width = w; this.height = w; } // efeito colateral!
+    @Override
+    public void setHeight(int h) { this.width = h; this.height = h; } // efeito colateral!
+}
+
+// Código que usa Rectangle é surpreendido quando recebe Square
+Rectangle r = new Square();
+r.setWidth(5);
+r.setHeight(4);
+System.out.println(r.area()); // esperado: 20 — obtido: 16
+```
+
+```java title="LiskovCorreto.java"
+// Solução — use composição ou interfaces separadas
+public interface Shape {
+    int area();
+}
+
+public class Rectangle implements Shape {
+    private final int width, height;
+    public Rectangle(int width, int height) {
+        this.width = width;
+        this.height = height;
+    }
+    public int area() { return width * height; }
+}
+
+public class Square implements Shape {
+    private final int side;
+    public Square(int side) { this.side = side; }
+    public int area() { return side * side; }
+}
+```
+
+### I — Interface Segregation Principle
+
+Clientes não devem ser forçados a depender de interfaces que não usam.
+
+```java title="InterfaceGorda.java"
+// Antes — interface faz demais
+public interface UserOperations {
+    User findById(Long id);
+    List<User> findAll();
+    User save(User user);
+    void delete(Long id);
+    void sendPasswordReset(User user);
+    void exportToCsv(List<User> users);
+    void importFromCsv(byte[] csvData);
+}
+```
+
+```java title="InterfaceSegregada.java"
+// Depois — interfaces coesas e focadas
+public interface UserRepository {
+    User findById(Long id);
+    List<User> findAll();
+    User save(User user);
+    void delete(Long id);
+}
+
+public interface UserNotificationService {
+    void sendPasswordReset(User user);
+}
+
+public interface UserExportService {
+    void exportToCsv(List<User> users);
+    void importFromCsv(byte[] csvData);
+}
+```
+
+### D — Dependency Inversion Principle
+
+Módulos de alto nível não devem depender de módulos de baixo nível. Ambos devem depender de abstrações. Com Spring, isso é natural via `@Autowired` em interfaces.
+
+```java title="DependencyInversion.java"
+// Ruim — acoplamento direto com a implementação concreta
+public class OrderService {
+    private MySQLOrderRepository repository = new MySQLOrderRepository(); // acoplado!
+}
+
+// Bom — depende da abstração, Spring injeta a implementação
+public class OrderService {
+    private final OrderRepository orderRepository; // interface
+
+    @Autowired
+    public OrderService(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+}
+
+// Pode ser trocado por qualquer implementação sem alterar OrderService
+@Repository
+public class JpaOrderRepository implements OrderRepository { /* ... */ }
+
+@Repository
+@Profile("test")
+public class InMemoryOrderRepository implements OrderRepository { /* ... */ }
+```
+
+<Callout type="tip" title="SOLID não é dogma">
+  Aplique SOLID com bom senso. Um utilitário simples com dois métodos não precisa de interfaces e estratégias. Esses princípios brilham em sistemas maiores, onde o custo da mudança é alto.
+</Callout>
+
+---
+
+## 4. Comentários: quando usar (e quando evitar)
+
+O código limpo é autoexplicativo. Comentários são frequentemente uma confissão de que o código não está claro o suficiente.
+
+### Comentários que atrapalham
+
+```java title="ComentariosRuins.java"
+// incrementa i
+i++;
+
+// verifica se usuário é admin
+if (user.getRole().equals("ADMIN")) { }
+
+// retorna a lista de usuários
+public List<User> getUsers() {
+    return userRepository.findAll();
+}
+
+// TODO: refatorar isso depois
+// (esse "depois" existe há 3 anos no repositório)
+```
+
+Comentários que apenas repetem o código são ruído. Comentários `TODO` que nunca são resolvidos viram dívida técnica silenciosa.
+
+### Comentários que agregam valor
+
+```java title="ComentariosBons.java"
+// RFC 2822 — formato de e-mail aceito pelo servidor de autenticação legado
+private static final String EMAIL_REGEX = "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,6}$";
+
+// Workaround: a API do parceiro retorna datas em fuso GMT-3 sem indicar o offset
+// Issue rastreado em: https://github.com/org/repo/issues/451
+Instant adjustedDate = rawDate.minusSeconds(10800);
+
+/**
+ * Calcula o preço final do pedido com todos os descontos aplicados.
+ *
+ * @param order  pedido com itens e cupom (se houver)
+ * @return valor final em reais, nunca negativo
+ * @throws IllegalArgumentException se o pedido for nulo
+ */
+public BigDecimal calculateFinalPrice(Order order) { /* ... */ }
+```
+
+<Callout type="info" title="Javadoc para APIs públicas">
+  Use Javadoc apenas em classes e métodos públicos que serão consumidos por outros desenvolvedores (bibliotecas, APIs internas). Para código interno de um módulo, bons nomes eliminam a necessidade de Javadoc.
+</Callout>
+
+---
+
+## 5. Tratamento de erros com Java
+
+Código limpo trata erros de forma explícita, sem esconder problemas.
+
+### Nunca engula exceções
+
+```java title="ExcecaoEngolida.java"
+// Péssimo — você nunca vai saber o que deu errado
+public Order findOrder(Long id) {
+    try {
+        return orderRepository.findById(id).get();
+    } catch (Exception e) {
+        // silêncio total — bug invisível em produção
+    }
+    return null;
+}
+```
+
+### Crie exceções expressivas e use Optional
+
+```java title="ExcecaoCorreta.java"
+// Exceção customizada com contexto
+public class OrderNotFoundException extends RuntimeException {
+    public OrderNotFoundException(Long orderId) {
+        super("Pedido não encontrado: id=" + orderId);
+    }
+}
+
+// Uso claro e sem retorno null
+public Order findOrderById(Long id) {
+    return orderRepository.findById(id)
+        .orElseThrow(() -> new OrderNotFoundException(id));
+}
+
+// Quando a ausência é um caso válido, use Optional explicitamente
+public Optional<Order> findLatestOrderByCustomer(Long customerId) {
+    return orderRepository.findTopByCustomerIdOrderByCreatedAtDesc(customerId);
+}
+
+// Consumidor decide o que fazer com o Optional
+Optional<Order> lastOrder = orderService.findLatestOrderByCustomer(customerId);
+lastOrder.ifPresent(order -> dashboard.addRecentOrder(order));
+```
+
+### Prefira exceções não-verificadas para erros de negócio
+
+```java title="ExcecoesNegocio.java"
+// RuntimeException para erros de negócio — sem try/catch obrigatório no chamador
+public class InsufficientStockException extends RuntimeException {
+    private final String productName;
+    private final int requested;
+    private final int available;
+
+    public InsufficientStockException(String productName, int requested, int available) {
+        super(String.format(
+            "Estoque insuficiente para '%s': solicitado=%d, disponível=%d",
+            productName, requested, available
+        ));
+        this.productName = productName;
+        this.requested = requested;
+        this.available = available;
+    }
+
+    // getters para logging estruturado
+    public String getProductName() { return productName; }
+    public int getRequested() { return requested; }
+    public int getAvailable() { return available; }
+}
+```
+
+<Callout type="danger" title="Null é o erro de um bilhão de dólares">
+  Evite retornar `null` em métodos que deveriam retornar objetos. Use `Optional<T>` para valores que podem estar ausentes, e lance exceções para condições de erro. Isso torna o contrato do método explícito e elimina `NullPointerException` silenciosos.
+</Callout>
+
+---
+
+## 6. Testes limpos
+
+Testes são cidadãos de primeira classe no código. Código de teste sujo eventualmente leva ao abandono dos testes — e isso é pior do que não ter teste algum.
+
+### Os princípios F.I.R.S.T.
+
+<Step number={1} title="Fast — Testes devem ser rápidos">
+  Testes lentos não são executados com frequência. Use mocks para dependências externas (banco, rede, filesystem).
+</Step>
+
+<Step number={2} title="Independent — Testes não devem depender entre si">
+  Cada teste deve configurar seu próprio estado inicial. Nunca dependa da ordem de execução.
+</Step>
+
+<Step number={3} title="Repeatable — Mesmo resultado em qualquer ambiente">
+  Evite dependências de data/hora atual, dados externos ou estado global. Use `Clock` injetável para lógica temporal.
+</Step>
+
+<Step number={4} title="Self-Validating — Resultado binário: passa ou falha">
+  O teste nunca deve precisar de interpretação manual. Use assertions claras — não `System.out.println`.
+</Step>
+
+<Step number={5} title="Timely — Escreva o teste antes ou junto com o código">
+  Testes escritos muito depois do código tendem a testar a implementação, não o comportamento.
+</Step>
+
+### Nomes descritivos e uma asserção por teste
+
+```java title="OrderServiceTestRuim.java"
+// Antes — nome vago, múltiplas asserções, sem contexto
+@Test
+public void testOrder() {
+    Order order = new Order();
+    order.addItem(new OrderItem("Java Book", 89.90, 2));
+    order.addItem(new OrderItem("Clean Code", 75.00, 1));
+
+    orderService.processOrder(order);
+
+    assertNotNull(order.getId());
+    assertEquals(254.80, order.getTotal(), 0.01);
+    assertEquals(OrderStatus.CONFIRMED, order.getStatus());
+    verify(emailService).sendOrderConfirmation(any());
+}
+```
+
+```java title="OrderServiceTestBom.java"
+// Depois — um comportamento por teste, nome descreve cenário completo
+@Test
+@DisplayName("deve calcular total correto somando todos os itens do pedido")
+void shouldCalculateTotalCorrectlyWhenProcessingOrder() {
+    Order order = anOrderWith(
+        item("Java Book", 89.90, 2),
+        item("Clean Code", 75.00, 1)
+    );
+
+    orderService.processOrder(order);
+
+    assertThat(order.getTotal()).isCloseTo(254.80, offset(0.01));
+}
+
+@Test
+@DisplayName("deve confirmar status do pedido após processamento bem-sucedido")
+void shouldSetStatusToConfirmedAfterSuccessfulProcessing() {
+    Order order = anOrderWith(item("Java Book", 89.90, 1));
+
+    orderService.processOrder(order);
+
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+}
+
+@Test
+@DisplayName("deve enviar e-mail de confirmação ao cliente após processar pedido")
+void shouldSendConfirmationEmailAfterProcessingOrder() {
+    Order order = anOrderWith(item("Java Book", 89.90, 1));
+
+    orderService.processOrder(order);
+
+    verify(emailService).sendOrderConfirmation(order);
+}
+```
+
+<Callout type="tip" title="Padrão Given-When-Then">
+  Estruture seus testes em três blocos: **Given** (dado que o sistema está nesse estado), **When** (quando essa ação acontece), **Then** (então esperamos esse resultado). Isso torna cada teste uma especificação executável do comportamento do sistema.
+</Callout>
+
+---
+
+## Conclusão
+
+Clean Code não é sobre escrever código perfeito da primeira vez — é sobre cultivar o hábito de deixar o código **melhor do que você encontrou**. A cada refatoração, a cada renomeação, a cada extração de método, você está reduzindo a dívida técnica e tornando o sistema mais sustentável.
+
+Os princípios que vimos aqui — nomes expressivos, funções pequenas, SOLID, comentários com propósito, tratamento de erros explícito e testes limpos — são complementares. Aplicados juntos, eles criam uma base sólida para qualquer projeto Java de longo prazo.
+
+Comece pequeno: na próxima vez que você abrir uma classe e sentir aquela estranheza ao ler, pare por cinco minutos e renomeie uma variável, extraia um método, remova um comentário redundante. Pequenas melhorias consistentes têm um impacto enorme ao longo do tempo.
+
+<QuizQuestion
+  question="Qual das alternativas abaixo representa uma violação do Princípio da Responsabilidade Única (SRP)?"
+  options={"[\"Uma classe OrderRepository que apenas persiste e recupera pedidos do banco de dados\",\"Uma classe UserService que cria usuários, envia e-mail de boas-vindas e gera tokens de reset de senha\",\"Uma classe PriceCalculator que recebe uma estratégia de desconto via injeção de dependência\",\"Uma classe OrderNotFoundException que estende RuntimeException com uma mensagem descritiva\"]"}
+  answer={1}
+  explanation="A classe UserService acumula três responsabilidades distintas: gerenciar o ciclo de vida do usuário, enviar notificações por e-mail e gerenciar autenticação/tokens. Cada uma dessas responsabilidades tem motivos diferentes para mudar, o que viola o SRP. A solução é separar essas responsabilidades em classes dedicadas: UserService, EmailNotificationService e PasswordResetService."
+/>

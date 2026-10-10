@@ -126,3 +126,14 @@ model OrderItem {
 
   @@map("order_items")
 }
+
+// ─────────────────────────────────────────────
+// VISUALIZAÇÕES — contador de views por artigo
+// ─────────────────────────────────────────────
+model ArticleView {
+  slug      String   @id
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("article_views")
+}

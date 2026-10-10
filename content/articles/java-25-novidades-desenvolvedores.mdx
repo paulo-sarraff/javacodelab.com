@@ -1,0 +1,518 @@
+## Java 25: o novo LTS que todo dev precisa dominar
+
+Java 25 chega como o mais aguardado LTS desde o Java 21. Se você tem acompanhado o ritmo acelerado de releases semestrais dos últimos anos, sabe que muita coisa saiu do forno como "preview" ou "incubating" — e o Java 25 é o momento em que boa parte dessas funcionalidades chega ao status **final**, pronta para produção.
+
+Neste artigo vamos explorar as principais novidades com código real, comparações de performance e dicas práticas para você já começar a usar no seu dia a dia. Sem enrolação.
+
+<Callout type="info" title="Versão e Disponibilidade">
+  Java 25 é um LTS (Long-Term Support) com suporte garantido por anos. Se você ainda está no Java 17 ou 21, este é o momento de planejar a migração. A maioria das features aqui descritas está finalizada — não são previews.
+</Callout>
+
+---
+
+## 1. Virtual Threads — agora verdadeiramente em produção
+
+Virtual Threads foram introduzidas como preview no Java 19 e finalizadas no Java 21 (JEP 444). No Java 25, o ecossistema amadureceu: frameworks, bibliotecas e a própria JVM incorporaram otimizações que tornam os virtual threads a escolha padrão para aplicações I/O-bound.
+
+### O problema que eles resolvem
+
+A thread de plataforma (OS thread) custa cerca de **1 MB de stack** e envolve context switching caro no kernel. Para aplicações que passam 90% do tempo esperando I/O (banco, HTTP, disco), isso é um desperdício gigantesco.
+
+Virtual threads são threads leves gerenciadas pela JVM. Você pode criar **milhões** delas sem explodir a memória:
+
+```java title="VirtualThreadDemo.java"
+import java.util.concurrent.Executors;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.URI;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.concurrent.Future;
+
+public class VirtualThreadDemo {
+
+    public static void main(String[] args) throws Exception {
+        var urls = List.of(
+            "https://api.github.com/users/torvalds",
+            "https://api.github.com/users/wycats",
+            "https://api.github.com/users/dhh"
+            // imagine 10.000 URLs aqui...
+        );
+
+        var client = HttpClient.newHttpClient();
+
+        // Executor com virtual threads — sem limite prático de concorrência
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<String>> futures = new ArrayList<>();
+
+            for (var url : urls) {
+                futures.add(executor.submit(() -> {
+                    var request = HttpRequest.newBuilder(URI.create(url)).build();
+                    var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                    return response.body();
+                }));
+            }
+
+            for (var future : futures) {
+                System.out.println(future.get().substring(0, 50) + "...");
+            }
+        }
+    }
+}
+```
+
+### Virtual Threads com Spring Boot
+
+A partir do Spring Boot 3.2+, habilitar virtual threads é uma única linha no `application.properties`:
+
+```java title="application.properties"
+spring.threads.virtual.enabled=true
+```
+
+Com isso, o Tomcat passa a processar cada requisição em uma virtual thread. Para WebFlux (Reactor), o modelo já é não-bloqueante por natureza — mas com virtual threads você pode misturar código síncrono sem penalidade.
+
+<Callout type="tip" title="Quando Usar Virtual Threads vs Reactive">
+  Use virtual threads para código I/O-bound com lógica complexa ou legado. Use Reactor/WebFlux quando precisar de backpressure explícita ou pipelines de dados. Os dois modelos coexistem no mesmo projeto.
+</Callout>
+
+### Comparação de performance
+
+| Cenário | Platform Threads (pool fixo) | Virtual Threads |
+|---|---|---|
+| 100 req/s | ~200 threads ativas | ~200 VT ativas |
+| 10.000 req/s | Saturação do pool (fila) | 10.000 VT, &lt;50MB extra |
+| Memória (10k threads) | ~10 GB | ~100 MB |
+| Latência p99 (I/O bound) | Alta (contenção) | Baixa |
+
+---
+
+## 2. Pattern Matching aprimorado
+
+Pattern matching no Java evoluiu de forma consistente. No Java 25, temos **switch expressions com pattern matching finalizado**, suporte aprimorado a **primitive types em patterns** e cenários mais ricos com **record patterns**.
+
+### Switch com sealed interfaces
+
+Esse é o caso de uso mais poderoso. Imagine um sistema de pagamentos com diferentes tipos de transação:
+
+```java title="PaymentProcessor.java"
+public class PaymentProcessor {
+
+    sealed interface Pagamento permits Pix, Cartao, Boleto {}
+
+    record Pix(String chave, double valor) implements Pagamento {}
+    record Cartao(String numero, int parcelas, double valor) implements Pagamento {}
+    record Boleto(String codigoBarras, double valor, java.time.LocalDate vencimento) implements Pagamento {}
+
+    public String processar(Pagamento pagamento) {
+        return switch (pagamento) {
+            case Pix(var chave, var valor) ->
+                "PIX de R$ %.2f para %s".formatted(valor, chave);
+
+            case Cartao(var numero, var parcelas, var valor) when parcelas > 12 ->
+                throw new IllegalArgumentException("Máximo 12 parcelas no cartão");
+
+            case Cartao(var numero, var parcelas, var valor) ->
+                "Cartão %s em %dx de R$ %.2f".formatted(
+                    numero.substring(numero.length() - 4),
+                    parcelas,
+                    valor / parcelas
+                );
+
+            case Boleto(var codigo, var valor, var venc) when venc.isBefore(java.time.LocalDate.now()) ->
+                "Boleto VENCIDO em " + venc + " — valor R$ %.2f".formatted(valor);
+
+            case Boleto(var codigo, var valor, var venc) ->
+                "Boleto R$ %.2f vence em %s".formatted(valor, venc);
+        };
+    }
+}
+```
+
+A JVM garante **exaustividade** em tempo de compilação: se você adicionar um novo tipo ao sealed, o switch não compila até você cobri-lo.
+
+### Primitive types em patterns
+
+Um dos avanços do Java 23/24 que chega mais maduro no 25: usar tipos primitivos diretamente em patterns:
+
+```java title="SensorReader.java"
+public class SensorReader {
+
+    public String classificarTemperatura(Object leitura) {
+        return switch (leitura) {
+            case Integer i when i < 0   -> "Abaixo de zero: " + i + "°C";
+            case Integer i when i < 20  -> "Frio: " + i + "°C";
+            case Integer i when i < 35  -> "Confortável: " + i + "°C";
+            case Integer i              -> "Calor extremo: " + i + "°C";
+            case Double d               -> "Leitura decimal: " + d + "°C";
+            case String s               -> "Erro de sensor: " + s;
+            case null                   -> "Sensor desconectado";
+            default                     -> "Tipo desconhecido: " + leitura.getClass();
+        };
+    }
+
+    // Com JEP 455 (primitive types in patterns) — guarda para o futuro próximo:
+    public String faixaSalarial(long salario) {
+        return switch (salario) {
+            case long s when s < 3_000L  -> "Júnior";
+            case long s when s < 8_000L  -> "Pleno";
+            case long s when s < 15_000L -> "Sênior";
+            default                       -> "Staff / Principal";
+        };
+    }
+}
+```
+
+<Callout type="warning" title="Cuidado com a Ordem dos Cases">
+  Em switch com patterns, a ordem importa. Cases mais específicos (com guards `when`) devem vir antes dos mais genéricos. O compilador alerta sobre cases dominados, mas é bom entender a regra.
+</Callout>
+
+---
+
+## 3. String Templates — interpolação segura
+
+String Templates (JEP 430, inicialmente preview no Java 21) chegam mais refinados no Java 25. A proposta resolve um problema real: interpolação de strings que é ao mesmo tempo **conveniente e segura** — prevenindo injeção por design.
+
+```java title="StringTemplatesDemo.java"
+public class StringTemplatesDemo {
+
+    // Exemplo 1: interpolação básica com STR
+    public static void exemplosBasicos() {
+        var nome = "Maria";
+        var idade = 32;
+
+        // Antes (Java 17)
+        String old = String.format("Olá, %s! Você tem %d anos.", nome, idade);
+
+        // Com String Templates
+        String novo = STR."Olá, \{nome}! Você tem \{idade} anos.";
+
+        // Expressões completas dentro de \{...}
+        String calculo = STR."Em 5 anos você terá \{idade + 5} anos.";
+    }
+
+    // Exemplo 2: geração de HTML segura
+    public static String gerarCardHtml(String titulo, String conteudo, int likes) {
+        return STR."""
+            <article class="card">
+              <h2>\{titulo}</h2>
+              <p>\{conteudo}</p>
+              <span class="likes">\{likes} curtidas</span>
+            </article>
+            """;
+    }
+
+    // Exemplo 3: queries com template processor customizado (SQL-safe)
+    // O template processor pode sanitizar inputs antes de montar a string
+    record Usuario(int id, String nome) {}
+
+    public static String buscarUsuario(int id) {
+        // Com um processor SQL customizado, \{id} nunca vira SQL injection
+        // porque o processor recebe os fragmentos separados dos valores
+        return STR."SELECT * FROM usuarios WHERE id = \{id}";
+        // Em produção, use um processor que prepare statements parametrizados
+    }
+}
+```
+
+<Callout type="tip" title="Por que String Templates são Superiores ao String.format?">
+  Com `String.format`, você depende de posição e tipo (`%s`, `%d`). Com templates, o valor fica inline onde você o usa — muito mais legível. E ao contrário de concatenação simples, o template processor pode interceptar e sanitizar os valores antes de montar a string final.
+</Callout>
+
+---
+
+## 4. Structured Concurrency + Scoped Values
+
+Dois JEPs que andam juntos e resolvem problemas reais de concorrência moderna.
+
+### Structured Concurrency (JEP 453)
+
+O conceito: tarefas concorrentes devem ter o mesmo ciclo de vida de seu escopo. Se uma falha, as outras são canceladas. Isso elimina leaks de threads e simplifica o tratamento de erros.
+
+```java title="ProdutoService.java"
+import java.util.concurrent.StructuredTaskScope;
+
+public class ProdutoService {
+
+    record Produto(String nome, double preco, int estoque) {}
+    record Preco(double valor) {}
+    record Estoque(int quantidade) {}
+
+    // Busca preço e estoque em paralelo — se um falhar, cancela o outro
+    public Produto buscarProduto(String id) throws Exception {
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+
+            var tarefaPreco   = scope.fork(() -> buscarPreco(id));
+            var tarefaEstoque = scope.fork(() -> buscarEstoque(id));
+
+            scope.join()           // aguarda ambas terminarem
+                 .throwIfFailed(); // lança exceção se alguma falhou
+
+            // Ambas concluíram com sucesso
+            return new Produto(
+                "Produto " + id,
+                tarefaPreco.get().valor(),
+                tarefaEstoque.get().quantidade()
+            );
+        }
+        // Ao sair do try: quaisquer threads pendentes são canceladas automaticamente
+    }
+
+    private Preco buscarPreco(String id) throws InterruptedException {
+        Thread.sleep(50); // simula I/O
+        return new Preco(99.90);
+    }
+
+    private Estoque buscarEstoque(String id) throws InterruptedException {
+        Thread.sleep(30); // simula I/O
+        return new Estoque(42);
+    }
+}
+```
+
+### Scoped Values (JEP 446)
+
+Scoped Values são o substituto moderno de `ThreadLocal`, especialmente para virtual threads:
+
+```java title="RequestContext.java"
+public class RequestContext {
+
+    // Declara o scoped value — imutável dentro do escopo
+    static final ScopedValue<String> USUARIO_LOGADO = ScopedValue.newInstance();
+    static final ScopedValue<String> REQUEST_ID     = ScopedValue.newInstance();
+
+    public static void processarRequisicao(String usuario, String requestId) {
+        ScopedValue.where(USUARIO_LOGADO, usuario)
+                   .where(REQUEST_ID, requestId)
+                   .run(() -> {
+                       // Dentro desse bloco (e qualquer método chamado por ele),
+                       // USUARIO_LOGADO e REQUEST_ID estão disponíveis
+                       executarLogicaDeNegocio();
+                   });
+        // Fora do bloco: valores não estão mais disponíveis
+    }
+
+    private static void executarLogicaDeNegocio() {
+        var usuario = USUARIO_LOGADO.get();    // sem passar por parâmetro
+        var reqId   = REQUEST_ID.get();
+        System.out.println("[" + reqId + "] Processando para: " + usuario);
+
+        // Virtual threads herdam o scoped value automaticamente — sem cópia de ThreadLocal
+        auditoria();
+    }
+
+    private static void auditoria() {
+        // Acessa o mesmo valor, mesmo em outra camada da chamada
+        System.out.println("Auditoria para: " + USUARIO_LOGADO.get());
+    }
+}
+```
+
+<Callout type="warning" title="ThreadLocal vs ScopedValue">
+  `ThreadLocal` tem problemas sérios com virtual threads: o valor é copiado para cada thread filha criada, causando inconsistências e vazamentos de memória. `ScopedValue` é imutável dentro do escopo e propagado de forma controlada — use-o em código novo.
+</Callout>
+
+---
+
+## 5. Stream Gatherers — operações intermediárias customizadas
+
+Finalizado no Java 24 e disponível sem ressalvas no Java 25, Stream Gatherers (JEP 461) preenche uma lacuna histórica da API de Streams: criar operações intermediárias customizadas sem recorrer a gambiarras.
+
+```java title="StreamGatherersDemo.java"
+import java.util.stream.Gatherer;
+import java.util.stream.Gatherers;
+import java.util.List;
+import java.util.stream.Stream;
+
+public class StreamGatherersDemo {
+
+    public static void main(String[] args) {
+
+        // 1. Sliding window — janela deslizante de tamanho N
+        var leituras = List.of(10, 15, 12, 18, 22, 19, 25, 30);
+
+        leituras.stream()
+                .gather(Gatherers.windowSliding(3))
+                .map(janela -> janela.stream().mapToInt(i -> i).average().orElse(0))
+                .forEach(media -> System.out.printf("Média: %.1f%n", media));
+        // Saída: Média: 12.3, Média: 15.0, Média: 17.3, ...
+
+        // 2. Fixed window (batching) — processa em lotes
+        var ids = List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+
+        ids.stream()
+           .gather(Gatherers.windowFixed(3))
+           .forEach(lote -> System.out.println("Processando lote: " + lote));
+        // Lote: [1,2,3], [4,5,6], [7,8,9], [10]
+
+        // 3. Gatherer customizado — deduplica elementos consecutivos
+        Stream.of("a", "a", "b", "b", "b", "c", "a")
+              .gather(deduplicarConsecutivos())
+              .forEach(System.out::println);
+        // Saída: a, b, c, a
+    }
+
+    // Gatherer customizado — remove duplicatas consecutivas
+    static <T> Gatherer<T, ?, T> deduplicarConsecutivos() {
+        return Gatherer.ofSequential(
+            () -> new Object[] { null },   // estado: último elemento visto
+            (estado, elemento, downstream) -> {
+                @SuppressWarnings("unchecked")
+                T ultimo = (T) estado[0];
+                if (!elemento.equals(ultimo)) {
+                    estado[0] = elemento;
+                    return downstream.push(elemento);
+                }
+                return true; // continua sem emitir
+            }
+        );
+    }
+}
+```
+
+<Callout type="tip" title="Gatherers vs Collectors">
+  `Collector` opera no final do pipeline (operação terminal). `Gatherer` opera no meio — você pode encadear vários e ainda terminar com `collect`, `toList`, `forEach`, etc. É o elo que faltava para pipelines verdadeiramente composicionais.
+</Callout>
+
+---
+
+## 6. Melhorias de performance
+
+### G1 GC — regiões humming
+
+O G1 continua sendo o GC padrão e recebeu melhorias no controle de regiões para workloads com muitos objetos de vida curta (o padrão em aplicações web). O resultado prático é redução de pausas de GC em aplicações com heap entre 4 GB e 32 GB.
+
+### Compact Object Headers (JEP 450)
+
+Esta é uma das melhorias de runtime mais interessantes do Java 25. O header de cada objeto Java, que antes ocupava **16 bytes** (mark word + class pointer), foi compactado para **8 bytes**:
+
+```java title="MemoryFootprintDemo.java"
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+
+public class MemoryFootprintDemo {
+
+    record Ponto(int x, int y) {}
+
+    public static void main(String[] args) throws Exception {
+        MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
+
+        long antes = memoryBean.getHeapMemoryUsage().getUsed();
+
+        // Cria 10 milhões de pequenos objetos
+        var pontos = new Ponto[10_000_000];
+        for (int i = 0; i < pontos.length; i++) {
+            pontos[i] = new Ponto(i, i * 2);
+        }
+
+        long depois = memoryBean.getHeapMemoryUsage().getUsed();
+
+        System.out.printf("Memória usada: %.1f MB%n", (depois - antes) / 1_048_576.0);
+        // Java 21: ~240 MB (header 16B + 8B de dados = 24B por objeto)
+        // Java 25: ~160 MB (header 8B + 8B de dados = 16B por objeto) — ~33% menos
+    }
+}
+```
+
+Os impactos concretos medidos pela equipe do OpenJDK:
+- **Redução de heap de até 20%** em aplicações com muitos objetos pequenos
+- **Melhora de throughput de 5-10%** por menor pressão no GC
+- **Menor footprint de container**: aplicações Java ficam menores no Kubernetes
+
+### Project Leyden — preparação para startup instantâneo
+
+Embora o Leyden completo ainda não esteja no Java 25, o groundwork está lá: melhorias no AOT (Ahead-of-Time) metadata caching e no CDS (Class Data Sharing) reduzem o tempo de startup em até 40% para aplicações Spring Boot típicas.
+
+```bash
+# Gera o archive CDS para sua aplicação
+java -Xshare:dump -cp target/minha-app.jar:... com.exemplo.MinhaApp
+
+# Executa com startup acelerado
+java -Xshare:on -cp target/minha-app.jar com.exemplo.MinhaApp
+# Startup de 800ms → ~480ms em aplicações típicas
+```
+
+---
+
+## 7. Unnamed Classes — Java sem cerimônia
+
+JEP 463 (finalizado) permite escrever programas Java sem a cerimônia de `public class Foo { public static void main(String[] args) { } }`. Perfeito para scripts, prototipagem e ensino.
+
+```java title="OlaMundo.java"
+// Java 25 — sem class, sem public, sem static, sem String[] args
+void main() {
+    System.out.println("Olá, Mundo!");
+}
+```
+
+```java title="CalculadoraSimples.java"
+// Script de linha de comando com lógica real
+import java.util.Scanner;
+
+void main() {
+    var scanner = new Scanner(System.in);
+    System.out.print("Digite dois números (ex: 10 5): ");
+
+    double a = scanner.nextDouble();
+    double b = scanner.nextDouble();
+
+    System.out.printf("Soma: %.2f%n", a + b);
+    System.out.printf("Produto: %.2f%n", a * b);
+    System.out.printf("Divisão: %.2f%n", b != 0 ? a / b : Double.NaN);
+}
+```
+
+Execute diretamente:
+
+```bash
+# Java 25
+java OlaMundo.java
+java CalculadoraSimples.java
+```
+
+<Callout type="tip" title="Uso em Produção vs Aprendizado">
+  Unnamed classes são ideais para scripts de automação, utilitários de linha de comando e ensino de Java para iniciantes. Em projetos de produção, continue usando classes nomeadas — a estrutura explícita é um benefício em bases de código grandes.
+</Callout>
+
+---
+
+## Resumo: o que migrar primeiro?
+
+Se você está planejando a adoção do Java 25, aqui está a ordem de prioridade prática:
+
+<Step number={1} title="Habilite Virtual Threads">
+  Se usa Spring Boot 3.2+, adicione `spring.threads.virtual.enabled=true`. Zero refatoração, ganho imediato de throughput. Monitore `jdk.VirtualThreadPinnedEvent` no JFR para detectar pinning.
+</Step>
+
+<Step number={2} title="Migre ThreadLocal para ScopedValue">
+  Revise todos os usos de `ThreadLocal` no seu código. Os que propagam contexto de requisição (usuário logado, request ID, tenant ID) são candidatos imediatos para `ScopedValue`.
+</Step>
+
+<Step number={3} title="Adote Pattern Matching nos seus switches">
+  Qualquer `if-else instanceof` ou `switch` com casting manual é um candidato. Sealed interfaces + pattern matching eliminam casos não tratados em tempo de compilação.
+</Step>
+
+<Step number={4} title="Experimente Stream Gatherers">
+  Revise pipelines de Stream onde você usa `flatMap` ou `reduce` de forma criativa para janelas deslizantes, batching ou agrupamento sequencial. Gatherers tornam o código muito mais legível.
+</Step>
+
+<Callout type="info" title="Compatibilidade Retroativa">
+  Java 25 mantém compatibilidade total com código Java 17 e 21. A migração de LTS para LTS é, em geral, tranquila. Use `--enable-preview` apenas para features ainda em preview — as listadas aqui são finais.
+</Callout>
+
+---
+
+## Teste seus conhecimentos
+
+<QuizQuestion
+  question="Qual é a principal vantagem dos ScopedValues sobre ThreadLocal em aplicações que usam Virtual Threads?"
+  options={"[\"ScopedValues são mais rápidos que ThreadLocal em benchmarks sintéticos\",\"ScopedValues são imutáveis dentro do escopo e propagados de forma controlada, evitando os problemas de cópia e vazamento que ThreadLocal tem com virtual threads\",\"ScopedValues permitem armazenar mais dados por thread do que ThreadLocal\",\"ScopedValues funcionam apenas com o executor newVirtualThreadPerTaskExecutor\"]"}
+  answer={1}
+  explanation="ThreadLocal copia seu valor para threads filhas, o que causa inconsistências e vazamentos de memória em cenários com muitas virtual threads. ScopedValue é imutável dentro do bloco where().run() e propagado de forma explícita e controlada — exatamente o que você precisa em concorrência estruturada."
+/>
+
+---
+
+Java 25 não é uma versão revolucionária — é uma versão que **consolida**. Os anos de features em preview resultaram em uma plataforma coesa onde virtual threads, pattern matching, structured concurrency e stream gatherers se complementam. A JVM está mais eficiente, o código está mais expressivo, e a curva de adoção nunca foi tão suave.
+
+Se você ainda está no Java 17, este é o LTS para migrar. Se já está no 21, a distância é curta e os ganhos são tangíveis. O Java continua evoluindo — e em 2025, está melhor do que nunca.

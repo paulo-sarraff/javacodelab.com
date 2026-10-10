@@ -1,8 +1,11 @@
 import Link from 'next/link'
 import { ArrowRight, Sparkles, Code2, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { getAllArticles } from '../data/articles'
 
 const HeroSection = () => {
+  const articleCount = getAllArticles().length
+
   return (
     <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
       {/* Background Elements */}
@@ -15,7 +18,7 @@ const HeroSection = () => {
         <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#FFD15A]/10 to-[#02a9f7]/10 border border-[#FFD15A]/20 rounded-full mb-8 animate-fade-in">
           <Sparkles className="w-4 h-4 text-[#FFD15A]" />
           <span className="text-sm font-roboto font-medium text-[#E8E8E8]/80">
-            Novo: Conteúdo Premium Disponível
+            Java, Spring Boot & Boas Práticas — em português
           </span>
         </div>
 
@@ -45,7 +48,7 @@ const HeroSection = () => {
             size="lg"
             className="bg-[#FFD15A] text-black hover:bg-[#FFD15A]/90 font-roboto font-semibold px-8 py-4 rounded-2xl text-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
           >
-            <Link href="/categoria/spring-framework" className="flex items-center gap-2">
+            <Link href="/artigos" className="flex items-center gap-2">
               <BookOpen className="w-5 h-5" />
               Explorar Artigos
               <ArrowRight className="w-5 h-5" />
@@ -66,21 +69,17 @@ const HeroSection = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
+        <div className="grid grid-cols-3 gap-8 max-w-2xl mx-auto">
           <div className="text-center">
-            <div className="text-3xl font-geist font-bold text-[#FFD15A] mb-2">50+</div>
-            <div className="text-[#E8E8E8]/60 font-roboto text-sm">Artigos Técnicos</div>
+            <div className="text-3xl font-geist font-bold text-[#FFD15A] mb-2">{articleCount}</div>
+            <div className="text-[#E8E8E8]/60 font-roboto text-sm">Artigos Publicados</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-geist font-bold text-[#02a9f7] mb-2">15k+</div>
-            <div className="text-[#E8E8E8]/60 font-roboto text-sm">Desenvolvedores</div>
-          </div>
-          <div className="text-center">
-            <div className="text-3xl font-geist font-bold text-[#FFD15A] mb-2">8+</div>
+            <div className="text-3xl font-geist font-bold text-[#02a9f7] mb-2">8+</div>
             <div className="text-[#E8E8E8]/60 font-roboto text-sm">Anos de Experiência</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-geist font-bold text-[#02a9f7] mb-2">100%</div>
+            <div className="text-3xl font-geist font-bold text-[#FFD15A] mb-2">100%</div>
             <div className="text-[#E8E8E8]/60 font-roboto text-sm">Código Funcional</div>
           </div>
         </div>

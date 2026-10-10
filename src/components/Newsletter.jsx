@@ -12,6 +12,8 @@ const Newsletter = ({ variant = 'default' }) => {
     const [message, setMessage] = useState('')
     const [isSuccess, setIsSuccess] = useState(false)
 
+const submitStatus = isSuccess ? 'success' : message ? 'error' : null
+
 const handleSubmit = async (e) => {
   e.preventDefault()
   setIsSubmitting(true)

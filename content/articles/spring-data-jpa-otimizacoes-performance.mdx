@@ -1,0 +1,509 @@
+## O problema N+1 — o maior inimigo do JPA
+
+Se você já trabalhou com JPA em produção, provavelmente já se deparou com o problema N+1 — muitas vezes sem perceber. É o tipo de bug silencioso que passa despercebido no ambiente de desenvolvimento (com poucos dados) e só se manifesta em produção, quando a base tem milhares de registros e o banco começa a engasgar.
+
+A ideia é simples: você faz **1 query** para buscar uma lista de entidades, e em seguida o Hibernate dispara **N queries adicionais** — uma para cada entidade — para carregar os relacionamentos. Com 100 usuários, você tem 101 queries. Com 1000, você tem 1001.
+
+### O cenário clássico
+
+Considere um domínio com `User → Order → OrderItem`. Ao listar os pedidos de todos os usuários com seus itens:
+
+```java title="UserRepository.java"
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    List<User> findAll(); // inocente, mas perigoso
+}
+```
+
+```java title="OrderService.java"
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+
+    private final UserRepository userRepository;
+
+    public List<OrderSummary> getAllOrderSummaries() {
+        List<User> users = userRepository.findAll(); // Query 1: SELECT * FROM users
+
+        return users.stream()
+            .flatMap(user -> user.getOrders().stream()  // Query 2..N: SELECT * FROM orders WHERE user_id = ?
+                .map(order -> new OrderSummary(
+                    user.getName(),
+                    order.getTotal(),
+                    order.getItems().size()  // Query N+1..2N: SELECT * FROM order_items WHERE order_id = ?
+                )))
+            .toList();
+    }
+}
+```
+
+Com 50 usuários tendo em média 5 pedidos cada, esse código dispara: **1 + 50 + 250 = 301 queries**. Em produção, com milhares de usuários, o banco simplesmente trava.
+
+<Callout type="danger" title="Anti-pattern N+1 em Produção">
+  O problema N+1 é a causa mais comum de degradação de performance em aplicações JPA. Ele raramente aparece em testes com H2 e poucos dados, mas em produção pode transformar uma operação simples em centenas de roundtrips ao banco — destruindo throughput e aumentando latência de forma exponencial.
+</Callout>
+
+### Solução 1: JOIN FETCH no JPQL
+
+A solução mais direta é usar `JOIN FETCH` para carregar os relacionamentos em uma única query:
+
+```java title="UserRepository.java"
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+
+    @Query("SELECT DISTINCT u FROM User u JOIN FETCH u.orders o JOIN FETCH o.items")
+    List<User> findAllWithOrdersAndItems();
+}
+```
+
+O `DISTINCT` é necessário porque o JOIN produz linhas duplicadas no resultado do SQL — o Hibernate elimina as duplicatas no nível do objeto.
+
+### Solução 2: @EntityGraph
+
+O `@EntityGraph` é a alternativa declarativa ao `JOIN FETCH`. É especialmente útil quando você quer reutilizar o mesmo gráfico de busca em vários métodos:
+
+```java title="UserRepository.java"
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+
+    @EntityGraph(attributePaths = {"orders", "orders.items"})
+    List<User> findAll();
+
+    @EntityGraph(attributePaths = {"orders"})
+    Optional<User> findById(Long id);
+}
+```
+
+### Solução 3: @BatchSize para lazy loading controlado
+
+Quando JOIN FETCH não é viável (por exemplo, em paginação — veremos mais adiante), o `@BatchSize` instrui o Hibernate a carregar os relacionamentos em lotes:
+
+```java title="User.java"
+@Entity
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
+    @BatchSize(size = 25)
+    private List<Order> orders = new ArrayList<>();
+}
+```
+
+Com `@BatchSize(size = 25)`, em vez de N queries individuais, o Hibernate agrupa os IDs e executa `SELECT * FROM orders WHERE user_id IN (?, ?, ..., ?)` com até 25 IDs por vez.
+
+### Como detectar N+1 em produção
+
+Habilite as estatísticas do Hibernate para detectar o problema antes que ele chegue em produção:
+
+```properties title="application-dev.properties"
+# Logar todas as queries SQL (apenas desenvolvimento)
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# Estatísticas detalhadas do Hibernate
+spring.jpa.properties.hibernate.generate_statistics=true
+logging.level.org.hibernate.stat=DEBUG
+
+# p6spy para interceptar queries com tempo de execução
+# (adicionar dependência p6spy ao pom.xml)
+spring.datasource.driver-class-name=com.p6spy.engine.spy.P6SpyDriver
+spring.datasource.url=jdbc:p6spy:postgresql://localhost:5432/meubanco
+```
+
+<Callout type="tip" title="Dica: Hibernate Statistics em Staging">
+  Ative `hibernate.generate_statistics=true` no ambiente de staging e monitore o contador `EntityLoadCount` vs `QueryExecutionCount`. Se o número de loads for muito maior que o de queries, você tem N+1. Nunca deixe isso habilitado em produção — tem custo de performance considerável.
+</Callout>
+
+---
+
+## Lazy loading vs eager loading — quando usar cada um
+
+O FetchType define quando o Hibernate carrega os dados de um relacionamento. A escolha errada aqui é responsável por uma classe inteira de problemas em produção.
+
+**A regra de ouro: sempre comece com `FetchType.LAZY`.**
+
+O `FetchType.EAGER` carrega o relacionamento imediatamente, junto com a entidade pai — independentemente de você precisar ou não daqueles dados. Parece conveniente, mas na prática é um desastre:
+
+```java title="Order.java"
+@Entity
+public class Order {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    // ERRADO: EAGER em coleções pode causar OutOfMemoryError
+    @OneToMany(mappedBy = "order", fetch = FetchType.EAGER)
+    private List<OrderItem> items;
+
+    // CORRETO: LAZY por padrão; carregue explicitamente quando necessário
+    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)
+    private List<OrderItem> items;
+}
+```
+
+Com EAGER em uma coleção, qualquer operação que carregue `Order` — mesmo um simples `findById` para exibir o número do pedido — vai buscar **todos os itens** do banco. Em pedidos com centenas de itens, isso é um `OutOfMemoryError` esperando para acontecer.
+
+### O Anti-pattern Open Session in View
+
+Por padrão, o Spring Boot habilita o `OpenSessionInViewFilter` (OSIV), que mantém a sessão JPA aberta durante todo o ciclo de vida da requisição HTTP — inclusive durante a renderização da view ou serialização JSON. Isso permite que o lazy loading funcione fora da transaction, mas cria sérios problemas:
+
+<Callout type="warning" title="Desative o Open Session in View">
+  O OSIV mascara o problema N+1: queries lazy são disparadas silenciosamente durante a serialização JSON, fora de qualquer contexto transacional controlado. Desative-o e force o carregamento explícito dos dados necessários dentro da camada de serviço.
+</Callout>
+
+```properties title="application.properties"
+# Desabilitar OSIV — prática recomendada para APIs REST
+spring.jpa.open-in-view=false
+```
+
+### Tratando LazyInitializationException
+
+Ao desativar o OSIV, você pode encontrar `LazyInitializationException` — o Hibernate tenta carregar um relacionamento lazy fora de uma sessão ativa. A solução correta é carregar tudo que você precisa **dentro da transação**:
+
+```java title="OrderService.java"
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+
+    private final OrderRepository orderRepository;
+
+    @Transactional(readOnly = true)
+    public OrderDetailDTO getOrderDetail(Long orderId) {
+        // Carrega o pedido E os itens dentro da mesma transação
+        Order order = orderRepository.findWithItemsById(orderId)
+            .orElseThrow(() -> new EntityNotFoundException("Pedido não encontrado: " + orderId));
+
+        // A conversão para DTO acontece aqui, ainda dentro da transação
+        return OrderDetailDTO.from(order);
+    }
+}
+```
+
+Use `@Transactional(readOnly = true)` para operações de leitura — o Hibernate otimiza o flush e o banco pode usar réplicas read-only.
+
+---
+
+## Projeções — buscar apenas o que precisa
+
+Carregar entidades completas quando você precisa de apenas dois ou três campos é um dos desperdícios mais comuns em aplicações JPA. Projeções resolvem isso com elegância.
+
+### Interface projections
+
+```java title="UserSummaryProjection.java"
+public interface UserSummaryProjection {
+    String getName();
+    String getEmail();
+    Long getOrderCount();
+}
+```
+
+```java title="UserRepository.java"
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+
+    @Query("SELECT u.name AS name, u.email AS email, COUNT(o) AS orderCount " +
+           "FROM User u LEFT JOIN u.orders o GROUP BY u.id, u.name, u.email")
+    List<UserSummaryProjection> findUserSummaries();
+}
+```
+
+O Hibernate gera um proxy que implementa a interface, mapeando as colunas do resultado pelos nomes dos getters. Simples e sem custo de mapeamento manual.
+
+### Class-based projections com records
+
+Para algo mais tipado e imutável, use records como DTOs:
+
+```java title="UserSummaryDTO.java"
+public record UserSummaryDTO(
+    String name,
+    String email,
+    Long orderCount
+) {
+    // Construtor gerado automaticamente pelo record
+}
+```
+
+```java title="UserRepository.java"
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+
+    @Query("SELECT new com.javacodelab.dto.UserSummaryDTO(u.name, u.email, COUNT(o)) " +
+           "FROM User u LEFT JOIN u.orders o GROUP BY u.id, u.name, u.email")
+    List<UserSummaryDTO> findUserSummaryDTOs();
+}
+```
+
+<Callout type="tip" title="Projeções são Significativamente Mais Rápidas">
+  Benchmarks internos tipicamente mostram projeções sendo 2x a 5x mais rápidas que o carregamento de entidades completas para operações de leitura, especialmente em tabelas com muitas colunas ou colunas grandes (LOBs, JSONs). Use entidades apenas quando precisar modificar e persistir dados.
+</Callout>
+
+---
+
+## Paginação e ordenação eficientes
+
+### Page vs Slice — cuidado com o count
+
+Ao usar `Pageable` com `Page<T>`, o Spring Data executa **duas queries**: uma para os dados e outra para contar o total de registros (`SELECT COUNT(*)`). Em tabelas grandes com JOINs complexos, esse count pode ser extremamente caro:
+
+```java title="OrderRepository.java"
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+
+    // Ruim para tabelas grandes: executa COUNT(*) em toda a tabela a cada página
+    Page<Order> findByUserId(Long userId, Pageable pageable);
+
+    // Melhor: Slice não executa COUNT, apenas verifica se há próxima página
+    Slice<Order> findByUserId(Long userId, Pageable pageable);
+}
+```
+
+Use `Slice<T>` quando você implementa scroll infinito ou "carregar mais" — situações onde o total de registros não importa.
+
+### Paginação por keyset para datasets grandes
+
+Para tabelas com milhões de registros, a paginação por offset (`LIMIT x OFFSET y`) degrada progressivamente — o banco precisa percorrer e descartar todos os registros anteriores. A paginação por keyset usa o último valor visto como cursor:
+
+```java title="OrderRepository.java"
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+
+    // Keyset pagination: sempre rápido, independente da página
+    @Query("SELECT o FROM Order o WHERE o.createdAt < :lastSeen AND o.userId = :userId " +
+           "ORDER BY o.createdAt DESC")
+    List<Order> findNextPage(
+        @Param("userId") Long userId,
+        @Param("lastSeen") LocalDateTime lastSeen,
+        Pageable pageable
+    );
+}
+```
+
+O cliente passa o `createdAt` do último item da página anterior como cursor. O índice na coluna `createdAt` é usado diretamente, sem scan de offset.
+
+<Callout type="tip" title="Índices e Ordenação">
+  Certifique-se de ter índices nas colunas usadas em `ORDER BY` e `WHERE`. Uma query bem escrita sem índice pode ser mais lenta que uma query ruim com índice. Use `EXPLAIN ANALYZE` para verificar o plano de execução.
+</Callout>
+
+---
+
+## Cache de primeiro e segundo nível
+
+### Cache de primeiro nível (persistence context)
+
+O cache de primeiro nível é automático e transparente — a própria sessão Hibernate. Dentro de uma mesma transação, a mesma entidade nunca é carregada duas vezes do banco:
+
+```java title="UserService.java"
+@Transactional
+public void demonstrateLevelOneCache() {
+    // Query 1: SELECT * FROM users WHERE id = 1
+    User user1 = userRepository.findById(1L).orElseThrow();
+
+    // Sem query: retorna do cache da sessão
+    User user2 = userRepository.findById(1L).orElseThrow();
+
+    // user1 == user2 (mesma referência de objeto)
+    assert user1 == user2;
+}
+```
+
+### Cache de segundo nível com Ehcache
+
+O cache de segundo nível persiste entre transações e pode ser compartilhado entre threads. Configure com Ehcache:
+
+```xml title="pom.xml"
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-cache</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.hibernate.orm</groupId>
+    <artifactId>hibernate-ehcache</artifactId>
+</dependency>
+```
+
+```properties title="application.properties"
+spring.jpa.properties.hibernate.cache.use_second_level_cache=true
+spring.jpa.properties.hibernate.cache.region.factory_class=org.hibernate.cache.ehcache.EhCacheRegionFactory
+spring.jpa.properties.hibernate.cache.use_query_cache=true
+```
+
+```java title="Product.java"
+@Entity
+@Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
+public class Product {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+    private BigDecimal price;
+
+    @OneToMany(mappedBy = "product")
+    @Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
+    private List<ProductVariant> variants;
+}
+```
+
+<Callout type="warning" title="Cache e Consistência">
+  O cache de segundo nível é ideal para dados de referência com baixa frequência de atualização (categorias, produtos, configurações). Para dados transacionais de alta escrita como pedidos e saldos, o overhead de invalidação supera os ganhos. Use `READ_ONLY` para dados imutáveis e `READ_WRITE` para dados que mudam ocasionalmente.
+</Callout>
+
+---
+
+## Consultas otimizadas
+
+### @Modifying para bulk update/delete
+
+Operações em massa nunca devem carregar entidades para a memória. Use `@Modifying` para executar UPDATE e DELETE diretamente no banco:
+
+```java title="OrderRepository.java"
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+
+    // Errado: carrega todos os pedidos na memória para deletar
+    // List<Order> expirados = findAllExpired(); deleteAll(expirados);
+
+    // Correto: DELETE direto no banco, sem carregar entidades
+    @Modifying
+    @Transactional
+    @Query("UPDATE Order o SET o.status = 'CANCELLED' WHERE o.createdAt < :cutoff AND o.status = 'PENDING'")
+    int cancelExpiredOrders(@Param("cutoff") LocalDateTime cutoff);
+
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM orders WHERE created_at < :cutoff AND status = 'CANCELLED'",
+           nativeQuery = true)
+    int deleteOldCancelledOrders(@Param("cutoff") LocalDateTime cutoff);
+}
+```
+
+Após um `@Modifying`, limpe o cache de primeiro nível com `clearAutomatically = true` para evitar inconsistências:
+
+```java title="OrderRepository.java"
+@Modifying(clearAutomatically = true, flushAutomatically = true)
+@Query("UPDATE Order o SET o.status = 'CANCELLED' WHERE o.createdAt < :cutoff")
+int cancelExpiredOrders(@Param("cutoff") LocalDateTime cutoff);
+```
+
+### Análise com EXPLAIN
+
+Antes de otimizar uma query, entenda o que o banco está fazendo. Use `EXPLAIN ANALYZE` no PostgreSQL:
+
+```sql title="explain-query.sql"
+EXPLAIN ANALYZE
+SELECT u.name, u.email, COUNT(o.id) as order_count
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+WHERE u.created_at > '2024-01-01'
+GROUP BY u.id, u.name, u.email
+ORDER BY order_count DESC;
+
+-- Saída exemplo:
+-- Sort  (cost=1250.45..1255.45 rows=2000 width=48)
+--   ->  HashAggregate  (cost=1100.00..1150.00 rows=2000 width=48)
+--         ->  Hash Left Join  (cost=450.00..1000.00 rows=20000 width=24)
+--               Hash Cond: (o.user_id = u.id)
+--               ->  Seq Scan on orders  (cost=0.00..400.00 rows=20000 width=8)
+--               ->  Hash  (cost=350.00..350.00 rows=8000 width=16)
+--                     ->  Index Scan on users  (cost=0.00..350.00 rows=8000 width=16)
+--                           Filter: (created_at > '2024-01-01')
+```
+
+Um `Seq Scan` em uma tabela grande com filtro é sinal de que falta um índice. `Index Scan` confirma que o índice está sendo usado.
+
+---
+
+## Configurações do Hibernate para produção
+
+As configurações padrão do Hibernate são voltadas para desenvolvimento. Em produção, alguns ajustes fazem diferença significativa:
+
+<Step number={1} title="HikariCP — Pool de Conexões">
+  Configure o pool de conexões com valores adequados à carga esperada. O padrão de 10 conexões é insuficiente para a maioria das aplicações em produção.
+</Step>
+
+```properties title="application-prod.properties"
+# HikariCP — ajuste conforme a capacidade do banco
+spring.datasource.hikari.maximum-pool-size=20
+spring.datasource.hikari.minimum-idle=5
+spring.datasource.hikari.connection-timeout=30000
+spring.datasource.hikari.idle-timeout=600000
+spring.datasource.hikari.max-lifetime=1800000
+spring.datasource.hikari.leak-detection-threshold=60000
+```
+
+<Step number={2} title="Batch Inserts e Updates">
+  Habilite o batch processing para operações em massa. Sem isso, cada `save()` é um roundtrip ao banco.
+</Step>
+
+```properties title="application-prod.properties"
+# Batch inserts/updates
+spring.jpa.properties.hibernate.jdbc.batch_size=50
+spring.jpa.properties.hibernate.order_inserts=true
+spring.jpa.properties.hibernate.order_updates=true
+spring.jpa.properties.hibernate.jdbc.batch_versioned_data=true
+```
+
+Com isso, ao chamar `saveAll()` com 500 entidades, o Hibernate agrupa as INSERTs em 10 batches de 50, reduzindo drasticamente os roundtrips ao banco.
+
+<Step number={3} title="Validação DDL em Produção">
+  Nunca use `ddl-auto=update` em produção. Use `validate` para verificar que o schema está correto, ou `none` se você gerencia migrações com Flyway/Liquibase.
+</Step>
+
+```properties title="application-prod.properties"
+# Produção: validate (verifica o schema) ou none (com Flyway/Liquibase)
+spring.jpa.hibernate.ddl-auto=validate
+
+# Desabilitar estatísticas em produção (custo de performance)
+spring.jpa.properties.hibernate.generate_statistics=false
+
+# Desabilitar show-sql em produção (spam nos logs)
+spring.jpa.show-sql=false
+```
+
+<Step number={4} title="Naming Strategy e Timezone">
+  Configure a estratégia de nomes e timezone para evitar surpresas.
+</Step>
+
+```properties title="application.properties"
+# Naming strategy padrão do Spring Boot (snake_case)
+spring.jpa.hibernate.naming.physical-strategy=org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+
+# Timezone UTC no banco e na JVM
+spring.jpa.properties.hibernate.jdbc.time_zone=UTC
+```
+
+<Callout type="info" title="Checklist de Performance JPA">
+  Antes de ir para produção, verifique: (1) OSIV desabilitado, (2) todos os relacionamentos como LAZY, (3) sem SELECT * desnecessário — use projeções, (4) paginação com Slice onde possível, (5) `@BatchSize` ou JOIN FETCH nos relacionamentos mais acessados, (6) índices nas colunas de filtro e ordenação, (7) `ddl-auto=validate` ou `none`, (8) HikariCP configurado para a carga esperada.
+</Callout>
+
+---
+
+## Resumo das técnicas
+
+Otimizar performance com Spring Data JPA não é sobre uma única técnica mágica — é sobre aplicar consistentemente um conjunto de boas práticas:
+
+O problema N+1 é o ponto de partida obrigatório. Detecte-o com as estatísticas do Hibernate e corrija com JOIN FETCH ou @EntityGraph. Para relacionamentos grandes onde o JOIN FETCH causaria produtos cartesianos, use @BatchSize como alternativa eficiente.
+
+Lazy Loading deve ser o padrão para todos os relacionamentos, e o OSIV deve ser desabilitado em APIs REST. Carregue explicitamente o que você precisa dentro da transação, convertendo para DTOs antes de sair do contexto transacional.
+
+Projeções são a ferramenta mais subutilizada: para operações de leitura, elas eliminam a sobrecarga de hidratação de entidades completas e reduzem drasticamente o tráfego entre aplicação e banco.
+
+Paginação eficiente passa por usar `Slice` em vez de `Page` quando o total não importa, e considerar keyset pagination para datasets muito grandes onde o OFFSET se torna um gargalo.
+
+Por fim, as configurações de produção — batch size, pool de conexões, DDL validation — fazem a diferença entre uma aplicação que escala e uma que quebra na primeira Black Friday.
+
+---
+
+<QuizQuestion
+  question="Qual é a forma mais eficiente de detectar o problema N+1 em uma aplicação Spring Boot JPA durante o desenvolvimento?"
+  options={"[\"Revisar o código manualmente procurando por loops que chamam repositórios\",\"Habilitar hibernate.generate_statistics=true e monitorar EntityLoadCount vs QueryExecutionCount\",\"Usar spring.jpa.show-sql=true e contar as linhas de log manualmente\",\"Executar testes de carga em produção e medir o tempo de resposta\"]"}
+  answer={1}
+  explanation="As estatísticas do Hibernate (hibernate.generate_statistics=true) fornecem contadores precisos de queries e carregamentos de entidades. Quando EntityLoadCount for muito maior que QueryExecutionCount, você tem N+1. Ferramentas como p6spy complementam isso com o SQL real e tempos de execução. Revisar o código manualmente é subjetivo e não escala; show-sql gera muito ruído; e testar em produção é arriscado e tardio."
+/>

@@ -97,9 +97,38 @@ export default async function Page({ params }) {
       }
     : null
 
+  // Schema.org BreadcrumbList — exibe trilha de navegação nos resultados do Google
+  const breadcrumbSchema = article
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          {
+            '@type': 'ListItem',
+            position: 1,
+            name: 'Home',
+            item: BASE_URL,
+          },
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: article.category,
+            item: `${BASE_URL}/artigos?categoria=${encodeURIComponent(article.category)}`,
+          },
+          {
+            '@type': 'ListItem',
+            position: 3,
+            name: article.title,
+            item: `${BASE_URL}/artigo/${article.slug}`,
+          },
+        ],
+      }
+    : null
+
   return (
     <>
       {articleSchema && <JsonLd data={articleSchema} />}
+      {breadcrumbSchema && <JsonLd data={breadcrumbSchema} />}
       {article && (
         <ArticleViewTracker
           slug={article.slug}
@@ -108,7 +137,7 @@ export default async function Page({ params }) {
           tags={article.tags}
         />
       )}
-      <ArticlePage />
+      <ArticlePage slug={slug} />
     </>
   )
 }
